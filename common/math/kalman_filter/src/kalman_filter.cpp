@@ -1,16 +1,18 @@
-// Copyright 2018-2019 Autoware Foundation
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2018-2019 Autoware Foundation. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #include "kalman_filter/kalman_filter.hpp"
 
@@ -58,9 +60,9 @@ void KalmanFilter::setB(const Eigen::MatrixXd & B) { B_ = B; }
 void KalmanFilter::setC(const Eigen::MatrixXd & C) { C_ = C; }
 void KalmanFilter::setQ(const Eigen::MatrixXd & Q) { Q_ = Q; }
 void KalmanFilter::setR(const Eigen::MatrixXd & R) { R_ = R; }
-void KalmanFilter::getX(Eigen::MatrixXd & x) { x = x_; }
-void KalmanFilter::getP(Eigen::MatrixXd & P) { P = P_; }
-double KalmanFilter::getXelement(unsigned int i) { return x_(i); }
+void KalmanFilter::getX(Eigen::MatrixXd & x) { x = x_; };
+void KalmanFilter::getP(Eigen::MatrixXd & P) { P = P_; };
+double KalmanFilter::getXelement(unsigned int i) { return x_(i); };
 
 bool KalmanFilter::predict(
   const Eigen::MatrixXd & x_next, const Eigen::MatrixXd & A, const Eigen::MatrixXd & Q)
@@ -105,7 +107,7 @@ bool KalmanFilter::update(
 
   if (isnan(K.array()).any() || isinf(K.array()).any()) {
     return false;
-  }
+  };
 
   x_ = x_ + K * (y - y_pred);
   P_ = P_ - K * (C * P_);

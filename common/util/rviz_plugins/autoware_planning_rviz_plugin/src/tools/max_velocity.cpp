@@ -1,49 +1,46 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2020 Tier IV, Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #include "max_velocity.hpp"
-
+#include <OGRE/OgreHardwarePixelBuffer.h>
+#include <ros/package.h>
+#include <rviz/display_context.h>
+#include <rviz/uniform_string_stream.h>
 #include <QPainter>
-#include <rviz_common/display_context.hpp>
-#include <rviz_common/uniform_string_stream.hpp>
-
-#include <OgreHardwarePixelBuffer.h>
-
-#include <algorithm>
-#include <iomanip>
-#include <string>
 
 namespace rviz_plugins
 {
 MaxVelocityDisplay::MaxVelocityDisplay()
 {
-  property_topic_name_ = new rviz_common::properties::StringProperty(
-    "Topic", "/planning/scenario_planning/current_max_velocity",
-    "The topic on which to publish max velocity.", this, SLOT(updateTopic()), this);
-  property_text_color_ = new rviz_common::properties::ColorProperty(
+  property_topic_name_ = new rviz::RosTopicProperty(
+    "Topic", "/planning/scenario_planning/current_max_velocity", ros::message_traits::datatype<std_msgs::Float32>(), "std_msgs::Float32 topic",
+    this, SLOT(updateTopic()));
+  property_text_color_ = new rviz::ColorProperty(
     "Text Color", QColor(255, 255, 255), "text color", this, SLOT(updateVisualization()), this);
-  property_left_ = new rviz_common::properties::IntProperty(
+  property_left_ = new rviz::IntProperty(
     "Left", 128, "Left of the plotter window", this, SLOT(updateVisualization()), this);
   property_left_->setMin(0);
-  property_top_ = new rviz_common::properties::IntProperty(
+  property_top_ = new rviz::IntProperty(
     "Top", 128, "Top of the plotter window", this, SLOT(updateVisualization()));
   property_top_->setMin(0);
 
-  property_length_ = new rviz_common::properties::IntProperty(
+  property_length_ = new rviz::IntProperty(
     "Length", 96, "Length of the plotter window", this, SLOT(updateVisualization()), this);
   property_length_->setMin(10);
-  property_value_scale_ = new rviz_common::properties::FloatProperty(
+  property_value_scale_ = new rviz::FloatProperty(
     "Value Scale", 1.0 / 4.0, "Value scale", this, SLOT(updateVisualization()), this);
   property_value_scale_->setMin(0.01);
 }
@@ -58,10 +55,9 @@ MaxVelocityDisplay::~MaxVelocityDisplay()
 void MaxVelocityDisplay::onInitialize()
 {
   static int count = 0;
-  rviz_common::UniformStringStream ss;
+  rviz::UniformStringStream ss;
   ss << "MaxVelocityDisplayObject" << count++;
-  auto logger = context_->getRosNodeAbstraction().lock()->get_raw_node()->get_logger();
-  overlay_.reset(new jsk_rviz_plugins::OverlayObject(scene_manager_, logger, ss.str()));
+  overlay_.reset(new jsk_rviz_plugins::OverlayObject(ss.str()));
 
   overlay_->show();
 
@@ -87,6 +83,16 @@ void MaxVelocityDisplay::updateTopic()
   unsubscribe();
   subscribe();
 }
+void MaxVelocityDisplay::subscribe()
+{
+  std::string topic_name = property_topic_name_->getTopicStd();
+  if (topic_name.length() > 0 && topic_name != "/") {
+    ros::NodeHandle nh;
+    sub_ = nh.subscribe(topic_name, 1, &MaxVelocityDisplay::processMessage, this);
+  }
+}
+
+void MaxVelocityDisplay::unsubscribe() { sub_.shutdown(); }
 
 void MaxVelocityDisplay::onEnable()
 {
@@ -101,21 +107,7 @@ void MaxVelocityDisplay::onDisable()
   overlay_->hide();
 }
 
-void MaxVelocityDisplay::subscribe()
-{
-  std::string topic_name = property_topic_name_->getStdString();
-  if (topic_name.length() > 0 && topic_name != "/") {
-    rclcpp::Node::SharedPtr raw_node = context_->getRosNodeAbstraction().lock()->get_raw_node();
-    max_vel_sub_ = raw_node->create_subscription<autoware_planning_msgs::msg::VelocityLimit>(
-      topic_name, rclcpp::QoS{1}.transient_local(),
-      std::bind(&MaxVelocityDisplay::processMessage, this, std::placeholders::_1));
-  }
-}
-
-void MaxVelocityDisplay::unsubscribe() { max_vel_sub_.reset(); }
-
-void MaxVelocityDisplay::processMessage(
-  const autoware_planning_msgs::msg::VelocityLimit::ConstSharedPtr msg_ptr)
+void MaxVelocityDisplay::processMessage(const std_msgs::Float32ConstPtr & msg_ptr)
 {
   if (!isEnabled()) {
     return;
@@ -156,18 +148,17 @@ void MaxVelocityDisplay::processMessage(
   // text
   QColor text_color(property_text_color_->getColor());
   text_color.setAlpha(255);
-  painter.setPen(QPen(text_color, static_cast<int>(2), Qt::SolidLine));
+  painter.setPen(QPen(text_color, int(2), Qt::SolidLine));
   QFont font = painter.font();
-  font.setPixelSize(
-    std::max(static_cast<int>(static_cast<double>(w) * property_value_scale_->getFloat()), 1));
+  font.setPixelSize(std::max(int(double(w) * property_value_scale_->getFloat()), 1));
   font.setBold(true);
   painter.setFont(font);
   std::ostringstream velocity_ss;
   velocity_ss << std::fixed << std::setprecision(0) << "limited" << std::endl
-              << msg_ptr->max_velocity * 3.6 << "km/h";
+              << msg_ptr->data * 3.6 << "km/h";
   painter.drawText(
-    static_cast<int>(line_width * 0.5), std::min(static_cast<int>(line_width * 0.5), h - 1), w,
-    std::max(h, 1), Qt::AlignCenter | Qt::AlignVCenter, velocity_ss.str().c_str());
+    (int)(line_width * 0.5), std::min((int)(line_width * 0.5), h - 1), w, std::max(h, 1),
+    Qt::AlignCenter | Qt::AlignVCenter, velocity_ss.str().c_str());
   painter.end();
   last_msg_ptr_ = msg_ptr;
 }
@@ -178,12 +169,10 @@ void MaxVelocityDisplay::updateVisualization()
   overlay_->setPosition(property_left_->getInt(), property_top_->getInt());
   overlay_->setDimensions(overlay_->getTextureWidth(), overlay_->getTextureHeight());
 
-  if (last_msg_ptr_ != nullptr) {
-    processMessage(last_msg_ptr_);
-  }
+  if (last_msg_ptr_ != nullptr) processMessage(last_msg_ptr_);
 }
 
 }  // namespace rviz_plugins
 
-#include <pluginlib/class_list_macros.hpp>
-PLUGINLIB_EXPORT_CLASS(rviz_plugins::MaxVelocityDisplay, rviz_common::Display)
+#include <pluginlib/class_list_macros.h>
+PLUGINLIB_EXPORT_CLASS(rviz_plugins::MaxVelocityDisplay, rviz::Display)

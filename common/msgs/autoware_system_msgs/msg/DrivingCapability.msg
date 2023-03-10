@@ -1,0 +1,3 @@
+Header header
+autoware_system_msgs/HazardStatus autonomous_driving
+autoware_system_msgs/HazardStatus remote_control

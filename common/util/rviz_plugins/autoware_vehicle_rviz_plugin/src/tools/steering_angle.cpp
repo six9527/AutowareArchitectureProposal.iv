@@ -1,55 +1,83 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2020 Tier IV, Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #include "steering_angle.hpp"
-
+#include <ros/package.h>
+#include <rviz/uniform_string_stream.h>
 #include <QPainter>
-#include <ament_index_cpp/get_package_share_directory.hpp>
-#include <rviz_common/uniform_string_stream.hpp>
-
-#include <algorithm>
-#include <iomanip>
-#include <memory>
-#include <string>
 
 namespace rviz_plugins
 {
-SteeringAngleDisplay::SteeringAngleDisplay()
-: handle_image_(std::string(
-                  ament_index_cpp::get_package_share_directory("autoware_vehicle_rviz_plugin") +
-                  "/images/handle.png")
-                  .c_str())
+std::unique_ptr<Ogre::ColourValue> SteeringAngleDisplay::gradation(
+  const QColor & color_min, const QColor & color_max, const double ratio)
 {
-  property_text_color_ = new rviz_common::properties::ColorProperty(
+  std::unique_ptr<Ogre::ColourValue> color_ptr(new Ogre::ColourValue);
+  color_ptr->g = color_max.greenF() * ratio + color_min.greenF() * (1.0 - ratio);
+  color_ptr->r = color_max.redF() * ratio + color_min.redF() * (1.0 - ratio);
+  color_ptr->b = color_max.blueF() * ratio + color_min.blueF() * (1.0 - ratio);
+
+  return color_ptr;
+}
+
+std::unique_ptr<Ogre::ColourValue> SteeringAngleDisplay::setColorDependsOnVelocity(
+  const double vel_max, const double cmd_vel)
+{
+  const double cmd_vel_abs = std::fabs(cmd_vel);
+  const double vel_min = 0.0;
+
+  std::unique_ptr<Ogre::ColourValue> color_ptr(new Ogre::ColourValue());
+  if (vel_min < cmd_vel_abs && cmd_vel_abs <= (vel_max / 2.0)) {
+    double ratio = (cmd_vel_abs - vel_min) / (vel_max / 2.0 - vel_min);
+    color_ptr = gradation(Qt::red, Qt::yellow, ratio);
+  } else if ((vel_max / 2.0) < cmd_vel_abs && cmd_vel_abs <= vel_max) {
+    double ratio = (cmd_vel_abs - vel_max / 2.0) / (vel_max - vel_max / 2.0);
+    color_ptr = gradation(Qt::yellow, Qt::green, ratio);
+  } else if (vel_max < cmd_vel_abs) {
+    *color_ptr = Ogre::ColourValue::Green;
+  } else {
+    *color_ptr = Ogre::ColourValue::Red;
+  }
+
+  return color_ptr;
+}
+
+SteeringAngleDisplay::SteeringAngleDisplay()
+: handle_image_(
+    std::string(ros::package::getPath("autoware_vehicle_rviz_plugin") + "/images/handle.png")
+      .c_str())
+{
+  property_text_color_ = new rviz::ColorProperty(
     "Text Color", QColor(25, 255, 240), "text color", this, SLOT(updateVisualization()), this);
-  property_left_ = new rviz_common::properties::IntProperty(
+  property_left_ = new rviz::IntProperty(
     "Left", 128, "Left of the plotter window", this, SLOT(updateVisualization()), this);
   property_left_->setMin(0);
-  property_top_ = new rviz_common::properties::IntProperty(
+  property_top_ = new rviz::IntProperty(
     "Top", 128, "Top of the plotter window", this, SLOT(updateVisualization()));
   property_top_->setMin(0);
 
-  property_length_ = new rviz_common::properties::IntProperty(
+  property_length_ = new rviz::IntProperty(
     "Length", 256, "Length of the plotter window", this, SLOT(updateVisualization()), this);
   property_length_->setMin(10);
-  property_value_height_offset_ = new rviz_common::properties::IntProperty(
+  property_value_height_offset_ = new rviz::IntProperty(
     "Value height offset", 0, "Height offset of the plotter window", this,
     SLOT(updateVisualization()));
-  property_value_scale_ = new rviz_common::properties::FloatProperty(
+  property_value_scale_ = new rviz::FloatProperty(
     "Value Scale", 1.0 / 6.667, "Value scale", this, SLOT(updateVisualization()), this);
   property_value_scale_->setMin(0.01);
-  property_handle_angle_scale_ = new rviz_common::properties::FloatProperty(
+  property_handle_angle_scale_ = new rviz::FloatProperty(
     "Scale", 3.0, "Scale is steering angle to handle angle ", this, SLOT(updateVisualization()),
     this);
   property_handle_angle_scale_->setMin(0.1);
@@ -64,15 +92,29 @@ SteeringAngleDisplay::~SteeringAngleDisplay()
 
 void SteeringAngleDisplay::onInitialize()
 {
-  RTDClass::onInitialize();
+  MFDClass::onInitialize();
   static int count = 0;
-  rviz_common::UniformStringStream ss;
+  rviz::UniformStringStream ss;
   ss << "SteeringAngleDisplayObject" << count++;
   overlay_.reset(new jsk_rviz_plugins::OverlayObject(ss.str()));
 
   overlay_->show();
 
-  updateVisualization();
+  overlay_->updateTextureSize(property_length_->getInt(), property_length_->getInt());
+  overlay_->setPosition(property_left_->getInt(), property_top_->getInt());
+  overlay_->setDimensions(overlay_->getTextureWidth(), overlay_->getTextureHeight());
+
+  // QColor background_color;
+  // background_color.setAlpha(0);
+  // jsk_rviz_plugins::ScopedPixelBuffer buffer = overlay_->getBuffer();
+  // hud_ = buffer.getQImage(*overlay_);
+  // for (int i = 0; i < overlay_->getTextureWidth(); i++)
+  // {
+  //   for (int j = 0; j < overlay_->getTextureHeight(); j++)
+  //   {
+  //     hud_.setPixel(i, j, background_color.rgba());
+  //   }
+  // }
 }
 
 void SteeringAngleDisplay::onEnable()
@@ -88,27 +130,18 @@ void SteeringAngleDisplay::onDisable()
   overlay_->hide();
 }
 
-void SteeringAngleDisplay::update(float wall_dt, float ros_dt)
+void SteeringAngleDisplay::processMessage(const autoware_vehicle_msgs::SteeringConstPtr & msg_ptr)
 {
-  (void)wall_dt;
-  (void)ros_dt;
-
-  double steering = 0;
-  {
-    std::lock_guard<std::mutex> message_lock(mutex_);
-    if (!last_msg_ptr_) {
-      return;
-    }
-    steering = last_msg_ptr_->steering_tire_angle;
+  if (!isEnabled()) {
+    return;
+  }
+  if (!overlay_->isVisible()) {
+    return;
   }
 
   QColor background_color;
   background_color.setAlpha(0);
   jsk_rviz_plugins::ScopedPixelBuffer buffer = overlay_->getBuffer();
-  if (!buffer.getPixelBuffer()) {
-    return;
-  }
-
   QImage hud = buffer.getQImage(*overlay_);
   hud.fill(background_color);
 
@@ -116,18 +149,16 @@ void SteeringAngleDisplay::update(float wall_dt, float ros_dt)
   painter.setRenderHint(QPainter::Antialiasing, true);
   QColor text_color(property_text_color_->getColor());
   text_color.setAlpha(255);
-  painter.setPen(QPen(text_color, static_cast<int>(2), Qt::SolidLine));
+  painter.setPen(QPen(text_color, int(2), Qt::SolidLine));
 
   const int w = overlay_->getTextureWidth();
   const int h = overlay_->getTextureHeight();
 
   QMatrix rotation_matrix;
   rotation_matrix.rotate(
-    std::round(property_handle_angle_scale_->getFloat() * (steering / M_PI) * -180.0));
-
+    std::round(property_handle_angle_scale_->getFloat() * (msg_ptr->data / M_PI) * -180.0));
   // else
-  // rotation_matrix.rotate
-  // ((property_handle_angle_scale_->getFloat() * (msg_ptr->data / M_PI) * -180.0));
+  // rotation_matrix.rotate((property_handle_angle_scale_->getFloat() * (msg_ptr->data / M_PI) * -180.0));
   int handle_image_width = handle_image_.width(), handle_image_height = handle_image_.height();
   QPixmap rotate_handle_image;
   rotate_handle_image = handle_image_.transformed(rotation_matrix);
@@ -139,33 +170,18 @@ void SteeringAngleDisplay::update(float wall_dt, float ros_dt)
     0, 0, property_length_->getInt(), property_length_->getInt(), rotate_handle_image);
 
   QFont font = painter.font();
-  font.setPixelSize(
-    std::max(static_cast<int>((static_cast<double>(w)) * property_value_scale_->getFloat()), 1));
+  font.setPixelSize(std::max(int(double(w) * property_value_scale_->getFloat()), 1));
   font.setBold(true);
   painter.setFont(font);
   std::ostringstream steering_angle_ss;
-  steering_angle_ss << std::fixed << std::setprecision(1) << steering * 180.0 / M_PI << "deg";
+  steering_angle_ss << std::fixed << std::setprecision(1) << msg_ptr->data * 180.0 / M_PI << "deg";
   painter.drawText(
     0, std::min(property_value_height_offset_->getInt(), h - 1), w,
     std::max(h - property_value_height_offset_->getInt(), 1), Qt::AlignCenter | Qt::AlignVCenter,
     steering_angle_ss.str().c_str());
 
   painter.end();
-}
-
-void SteeringAngleDisplay::processMessage(
-  const autoware_auto_vehicle_msgs::msg::SteeringReport::ConstSharedPtr msg_ptr)
-{
-  if (!isEnabled()) {
-    return;
-  }
-
-  {
-    std::lock_guard<std::mutex> message_lock(mutex_);
-    last_msg_ptr_ = msg_ptr;
-  }
-
-  queueRender();
+  last_msg_ptr_ = msg_ptr;
 }
 
 void SteeringAngleDisplay::updateVisualization()
@@ -173,9 +189,23 @@ void SteeringAngleDisplay::updateVisualization()
   overlay_->updateTextureSize(property_length_->getInt(), property_length_->getInt());
   overlay_->setPosition(property_left_->getInt(), property_top_->getInt());
   overlay_->setDimensions(overlay_->getTextureWidth(), overlay_->getTextureHeight());
+
+  // QColor background_color;
+  // background_color.setAlpha(0);
+  // jsk_rviz_plugins::ScopedPixelBuffer buffer = overlay_->getBuffer();
+  // hud_ = buffer.getQImage(*overlay_);
+  // for (int i = 0; i < overlay_->getTextureWidth(); i++)
+  // {
+  //   for (int j = 0; j < overlay_->getTextureHeight(); j++)
+  //   {
+  //     hud_.setPixel(i, j, background_color.rgba());
+  //   }
+  // }
+
+  if (last_msg_ptr_ != nullptr) processMessage(last_msg_ptr_);
 }
 
 }  // namespace rviz_plugins
 
-#include <pluginlib/class_list_macros.hpp>
-PLUGINLIB_EXPORT_CLASS(rviz_plugins::SteeringAngleDisplay, rviz_common::Display)
+#include <pluginlib/class_list_macros.h>
+PLUGINLIB_EXPORT_CLASS(rviz_plugins::SteeringAngleDisplay, rviz::Display)

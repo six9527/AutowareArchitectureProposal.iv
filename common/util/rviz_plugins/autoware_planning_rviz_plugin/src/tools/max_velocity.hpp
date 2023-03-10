@@ -1,50 +1,50 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2020 Tier IV, Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
-#ifndef TOOLS__MAX_VELOCITY_HPP_
-#define TOOLS__MAX_VELOCITY_HPP_
-
-#include <deque>
-#include <memory>
+#pragma once
 
 #ifndef Q_MOC_RUN
-#include "jsk_overlay_utils.hpp"
-
-#include <rclcpp/rclcpp.hpp>
-#include <rviz_common/display_context.hpp>
-#include <rviz_common/frame_manager_iface.hpp>
-#include <rviz_common/message_filter_display.hpp>
-#include <rviz_common/properties/bool_property.hpp>
-#include <rviz_common/properties/color_property.hpp>
-#include <rviz_common/properties/enum_property.hpp>
-#include <rviz_common/properties/float_property.hpp>
-#include <rviz_common/properties/int_property.hpp>
-#include <rviz_common/properties/string_property.hpp>
-#include <rviz_common/tool.hpp>
-#include <rviz_common/validate_floats.hpp>
-
-#include <autoware_planning_msgs/msg/velocity_limit.hpp>
+#include <ros/ros.h>
+#include <rviz/message_filter_display.h>
+// #include <rviz/properties/ros_topic_property.h>
+#include <rviz/display_context.h>
+#include <rviz/frame_manager.h>
+#include <rviz/properties/bool_property.h>
+#include <rviz/properties/color_property.h>
+#include <rviz/properties/enum_property.h>
+#include <rviz/properties/float_property.h>
+#include <rviz/properties/int_property.h>
+#include <rviz/validate_floats.h>
 
 #include <OgreBillboardSet.h>
 #include <OgreManualObject.h>
 #include <OgreSceneManager.h>
 #include <OgreSceneNode.h>
+
+#include <deque>
+#include <memory>
+
+#include "std_msgs/Float32.h"
+
+#include "jsk_overlay_utils.hpp"
 #endif
 
 namespace rviz_plugins
 {
-class MaxVelocityDisplay : public rviz_common::Display
+class MaxVelocityDisplay : public rviz::Display
 {
   Q_OBJECT
 
@@ -57,26 +57,23 @@ public:
   void onEnable() override;
   void subscribe();
   void unsubscribe();
-
 private Q_SLOTS:
   void updateTopic();
   void updateVisualization();
 
 protected:
-  void processMessage(const autoware_planning_msgs::msg::VelocityLimit::ConstSharedPtr msg_ptr);
+  void processMessage(const std_msgs::Float32ConstPtr & msg_ptr);
   jsk_rviz_plugins::OverlayObject::Ptr overlay_;
-  rviz_common::properties::ColorProperty * property_text_color_;
-  rviz_common::properties::IntProperty * property_left_;
-  rviz_common::properties::IntProperty * property_top_;
-  rviz_common::properties::IntProperty * property_length_;
-  rviz_common::properties::StringProperty * property_topic_name_;
-  rviz_common::properties::FloatProperty * property_value_scale_;
+  rviz::ColorProperty * property_text_color_;
+  rviz::IntProperty * property_left_;
+  rviz::IntProperty * property_top_;
+  rviz::IntProperty * property_length_;
+  rviz::RosTopicProperty * property_topic_name_;
+  rviz::FloatProperty * property_value_scale_;
 
 private:
-  rclcpp::Subscription<autoware_planning_msgs::msg::VelocityLimit>::SharedPtr max_vel_sub_;
-  autoware_planning_msgs::msg::VelocityLimit::ConstSharedPtr last_msg_ptr_;
+  ros::Subscriber sub_;
+  std_msgs::Float32ConstPtr last_msg_ptr_;
 };
 
 }  // namespace rviz_plugins
-
-#endif  // TOOLS__MAX_VELOCITY_HPP_

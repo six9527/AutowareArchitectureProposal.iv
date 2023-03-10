@@ -1,38 +1,50 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2020 Tier IV, Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
-#ifndef TOOLS__STEERING_ANGLE_HPP_
-#define TOOLS__STEERING_ANGLE_HPP_
-
-#include <memory>
-#include <mutex>
+#pragma once
 
 #ifndef Q_MOC_RUN
+#include <ros/ros.h>
+#include <rviz/message_filter_display.h>
+// #include <rviz/properties/ros_topic_property.h>
+#include <rviz/display_context.h>
+#include <rviz/frame_manager.h>
+#include <rviz/properties/bool_property.h>
+#include <rviz/properties/color_property.h>
+#include <rviz/properties/enum_property.h>
+#include <rviz/properties/float_property.h>
+#include <rviz/properties/int_property.h>
+#include <rviz/validate_floats.h>
+
+#include <OgreBillboardSet.h>
+#include <OgreManualObject.h>
+#include <OgreSceneManager.h>
+#include <OgreSceneNode.h>
+
+#include <deque>
+#include <memory>
+
+#include "autoware_vehicle_msgs/Steering.h"
+
 #include "jsk_overlay_utils.hpp"
-
-#include <rviz_common/properties/color_property.hpp>
-#include <rviz_common/properties/float_property.hpp>
-#include <rviz_common/properties/int_property.hpp>
-#include <rviz_common/ros_topic_display.hpp>
-
-#include <autoware_auto_vehicle_msgs/msg/steering_report.hpp>
 #endif
 
 namespace rviz_plugins
 {
-class SteeringAngleDisplay
-: public rviz_common::RosTopicDisplay<autoware_auto_vehicle_msgs::msg::SteeringReport>
+class SteeringAngleDisplay : public rviz::MessageFilterDisplay<autoware_vehicle_msgs::Steering>
 {
   Q_OBJECT
 
@@ -48,26 +60,24 @@ private Q_SLOTS:
   void updateVisualization();
 
 protected:
-  void update(float wall_dt, float ros_dt) override;
-  void processMessage(
-    const autoware_auto_vehicle_msgs::msg::SteeringReport::ConstSharedPtr msg_ptr) override;
-
+  void processMessage(const autoware_vehicle_msgs::SteeringConstPtr & msg_ptr) override;
+  std::unique_ptr<Ogre::ColourValue> setColorDependsOnVelocity(
+    const double vel_max, const double cmd_vel);
+  std::unique_ptr<Ogre::ColourValue> gradation(
+    const QColor & color_min, const QColor & color_max, const double ratio);
   jsk_rviz_plugins::OverlayObject::Ptr overlay_;
-  rviz_common::properties::ColorProperty * property_text_color_;
-  rviz_common::properties::IntProperty * property_left_;
-  rviz_common::properties::IntProperty * property_top_;
-  rviz_common::properties::IntProperty * property_length_;
-  rviz_common::properties::FloatProperty * property_handle_angle_scale_;
-  rviz_common::properties::IntProperty * property_value_height_offset_;
-  rviz_common::properties::FloatProperty * property_value_scale_;
+  rviz::ColorProperty * property_text_color_;
+  rviz::IntProperty * property_left_;
+  rviz::IntProperty * property_top_;
+  rviz::IntProperty * property_length_;
+  rviz::FloatProperty * property_handle_angle_scale_;
+  rviz::IntProperty * property_value_height_offset_;
+  rviz::FloatProperty * property_value_scale_;
   QPixmap handle_image_;
   // QImage hud_;
 
 private:
-  std::mutex mutex_;
-  autoware_auto_vehicle_msgs::msg::SteeringReport::ConstSharedPtr last_msg_ptr_;
+  autoware_vehicle_msgs::SteeringConstPtr last_msg_ptr_;
 };
 
 }  // namespace rviz_plugins
-
-#endif  // TOOLS__STEERING_ANGLE_HPP_

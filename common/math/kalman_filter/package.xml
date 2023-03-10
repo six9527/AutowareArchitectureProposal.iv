@@ -6,13 +6,10 @@
   <maintainer email="yukihiro.saito@tier4.jp">Yukihiro Saito Horibe</maintainer>
   <author email="takamasa.horibe@tier4.jp">Takamasa Horibe</author>
 
-  <license>Apache License 2.0</license>
-  <buildtool_depend>ament_cmake_auto</buildtool_depend>
+  <license>Apache 2</license>
 
-  <test_depend>ament_cmake_cppcheck</test_depend>
-  <test_depend>ament_lint_auto</test_depend>
+  <buildtool_depend>catkin</buildtool_depend>
 
-  <export>
-    <build_type>ament_cmake</build_type>
-  </export>
+  <depend>roscpp</depend>
+  
 </package>

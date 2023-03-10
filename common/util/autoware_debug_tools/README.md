@@ -101,7 +101,7 @@ pose:
 
 ### stop_reason2tf
 
-This is an all-in-one script that uses `tf2pose`, `pose2tf`, and `stop_reason2pose`.  
+This is a all-in-one script that uses `tf2pose`, `pose2tf`, and `stop_reason2pose`.  
 With this tool, you can view the relative position from base_link to the nearest stop_reason.
 
 ```sh
@@ -117,16 +117,4 @@ At time 1605168359.501
 - Rotation: in Quaternion [0.007, 0.011, -0.005, 1.000]
             in RPY (radian) [0.014, 0.023, -0.010]
             in RPY (degree) [0.825, 1.305, -0.573]
-```
-
-### lateral_error_publisher
-
-This node calculate the control error and localization error in the trajectory normal direction as shown in the figure below.
-
-![lateral_error_publisher_overview](./media/lateral_error_publisher.svg)
-
-Set the reference trajectory, vehicle pose and ground truth pose in the launch file.
-
-```sh
-ros2 launch autoware_debug_tools lateral_error_publisher.launch.xml
 ```

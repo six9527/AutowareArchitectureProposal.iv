@@ -1,39 +1,39 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2020 Tier IV, Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #include "turn_signal.hpp"
-
+#include <rviz/uniform_string_stream.h>
 #include <QPainter>
-#include <ament_index_cpp/get_package_share_directory.hpp>
-#include <rviz_common/uniform_string_stream.hpp>
 
 namespace rviz_plugins
 {
 TurnSignalDisplay::TurnSignalDisplay()
 {
-  property_left_ = new rviz_common::properties::IntProperty(
+  property_left_ = new rviz::IntProperty(
     "Left", 128, "Left of the plotter window", this, SLOT(updateVisualization()), this);
   property_left_->setMin(0);
-  property_top_ = new rviz_common::properties::IntProperty(
+  property_top_ = new rviz::IntProperty(
     "Top", 128, "Top of the plotter window", this, SLOT(updateVisualization()));
   property_top_->setMin(0);
 
-  property_width_ = new rviz_common::properties::IntProperty(
+  property_width_ = new rviz::IntProperty(
     "Width", 256, "Width of the plotter window", this, SLOT(updateVisualization()), this);
   property_width_->setMin(10);
-  property_height_ = new rviz_common::properties::IntProperty(
-    "Height", 256, "Height of the plotter window", this, SLOT(updateVisualization()), this);
+  property_height_ = new rviz::IntProperty(
+    "Height", 256, "Width of the plotter window", this, SLOT(updateVisualization()), this);
   property_height_->setMin(10);
 }
 
@@ -46,9 +46,9 @@ TurnSignalDisplay::~TurnSignalDisplay()
 
 void TurnSignalDisplay::onInitialize()
 {
-  RTDClass::onInitialize();
+  MFDClass::onInitialize();
   static int count = 0;
-  rviz_common::UniformStringStream ss;
+  rviz::UniformStringStream ss;
   ss << "TurnSignalDisplayObject" << count++;
   overlay_.reset(new jsk_rviz_plugins::OverlayObject(ss.str()));
 
@@ -72,33 +72,13 @@ void TurnSignalDisplay::onDisable()
   overlay_->hide();
 }
 
-void TurnSignalDisplay::processMessage(
-  const autoware_auto_vehicle_msgs::msg::TurnIndicatorsReport::ConstSharedPtr msg_ptr)
+void TurnSignalDisplay::processMessage(const autoware_vehicle_msgs::TurnSignalConstPtr & msg_ptr)
 {
   if (!isEnabled()) {
     return;
   }
-
-  {
-    std::lock_guard<std::mutex> message_lock(mutex_);
-    last_msg_ptr_ = msg_ptr;
-  }
-
-  queueRender();
-}
-
-void TurnSignalDisplay::update(float wall_dt, float ros_dt)
-{
-  (void)wall_dt;
-  (void)ros_dt;
-
-  unsigned int signal_type;
-  {
-    std::lock_guard<std::mutex> message_lock(mutex_);
-    if (!last_msg_ptr_) {
-      return;
-    }
-    signal_type = last_msg_ptr_->report;
+  if (!overlay_->isVisible()) {
+    return;
   }
 
   QColor background_color;
@@ -113,30 +93,30 @@ void TurnSignalDisplay::update(float wall_dt, float ros_dt)
   // turn signal color
   QColor white_color(Qt::white);
   white_color.setAlpha(255);
-  if (signal_type == autoware_auto_vehicle_msgs::msg::TurnIndicatorsReport::ENABLE_RIGHT) {
-    painter.setPen(QPen(white_color, static_cast<int>(2), Qt::DotLine));
+  if (msg_ptr->data == autoware_vehicle_msgs::TurnSignal::RIGHT) {
+    painter.setPen(QPen(white_color, int(2), Qt::DotLine));
     painter.drawPolygon(left_arrow_polygon_, 7);
     painter.setBrush(QBrush(Qt::white, Qt::SolidPattern));
-    painter.setPen(QPen(white_color, static_cast<int>(2), Qt::SolidLine));
+    painter.setPen(QPen(white_color, int(2), Qt::SolidLine));
     painter.drawPolygon(right_arrow_polygon_, 7);
-  } else if (signal_type == autoware_auto_vehicle_msgs::msg::TurnIndicatorsReport::ENABLE_LEFT) {
-    painter.setPen(QPen(white_color, static_cast<int>(2), Qt::DotLine));
+  } else if (msg_ptr->data == autoware_vehicle_msgs::TurnSignal::LEFT) {
+    painter.setPen(QPen(white_color, int(2), Qt::DotLine));
     painter.drawPolygon(right_arrow_polygon_, 7);
     painter.setBrush(QBrush(Qt::white, Qt::SolidPattern));
-    painter.setPen(QPen(white_color, static_cast<int>(2), Qt::SolidLine));
+    painter.setPen(QPen(white_color, int(2), Qt::SolidLine));
     painter.drawPolygon(left_arrow_polygon_, 7);
-  } else if (signal_type == autoware_auto_vehicle_msgs::msg::HazardLightsReport::ENABLE) {
+  } else if (msg_ptr->data == autoware_vehicle_msgs::TurnSignal::HAZARD) {
     painter.setBrush(QBrush(Qt::white, Qt::SolidPattern));
-    painter.setPen(QPen(white_color, static_cast<int>(2), Qt::SolidLine));
+    painter.setPen(QPen(white_color, int(2), Qt::SolidLine));
     painter.drawPolygon(right_arrow_polygon_, 7);
     painter.drawPolygon(left_arrow_polygon_, 7);
   } else {
-    painter.setPen(QPen(white_color, static_cast<int>(2), Qt::DotLine));
+    painter.setPen(QPen(white_color, int(2), Qt::DotLine));
     painter.drawPolygon(right_arrow_polygon_, 7);
     painter.drawPolygon(left_arrow_polygon_, 7);
   }
   painter.end();
-  updateVisualization();
+  last_msg_ptr_ = msg_ptr;
 }
 
 void TurnSignalDisplay::updateVisualization()
@@ -148,38 +128,40 @@ void TurnSignalDisplay::updateVisualization()
   const int w = overlay_->getTextureWidth();
   const int h = overlay_->getTextureHeight();
 
-  right_arrow_polygon_[0].setX(static_cast<float>(w) * 5.0 / 5.0);
-  right_arrow_polygon_[0].setY(static_cast<float>(h) * 1.0 / 2.0);
-  right_arrow_polygon_[1].setX(static_cast<float>(w) * 4.0 / 5.0);
-  right_arrow_polygon_[1].setY(static_cast<float>(h) * 1.0 / 5.0);
-  right_arrow_polygon_[2].setX(static_cast<float>(w) * 4.0 / 5.0);
-  right_arrow_polygon_[2].setY(static_cast<float>(h) * 2.0 / 5.0);
-  right_arrow_polygon_[3].setX(static_cast<float>(w) * 3.0 / 5.0);
-  right_arrow_polygon_[3].setY(static_cast<float>(h) * 2.0 / 5.0);
-  right_arrow_polygon_[4].setX(static_cast<float>(w) * 3.0 / 5.0);
-  right_arrow_polygon_[4].setY(static_cast<float>(h) * 3.0 / 5.0);
-  right_arrow_polygon_[5].setX(static_cast<float>(w) * 4.0 / 5.0);
-  right_arrow_polygon_[5].setY(static_cast<float>(h) * 3.0 / 5.0);
-  right_arrow_polygon_[6].setX(static_cast<float>(w) * 4.0 / 5.0);
-  right_arrow_polygon_[6].setY(static_cast<float>(h) * 4.0 / 5.0);
+  right_arrow_polygon_[0].setX((float)w * 5.0 / 5.0);
+  right_arrow_polygon_[0].setY((float)h * 1.0 / 2.0);
+  right_arrow_polygon_[1].setX((float)w * 4.0 / 5.0);
+  right_arrow_polygon_[1].setY((float)h * 1.0 / 5.0);
+  right_arrow_polygon_[2].setX((float)w * 4.0 / 5.0);
+  right_arrow_polygon_[2].setY((float)h * 2.0 / 5.0);
+  right_arrow_polygon_[3].setX((float)w * 3.0 / 5.0);
+  right_arrow_polygon_[3].setY((float)h * 2.0 / 5.0);
+  right_arrow_polygon_[4].setX((float)w * 3.0 / 5.0);
+  right_arrow_polygon_[4].setY((float)h * 3.0 / 5.0);
+  right_arrow_polygon_[5].setX((float)w * 4.0 / 5.0);
+  right_arrow_polygon_[5].setY((float)h * 3.0 / 5.0);
+  right_arrow_polygon_[6].setX((float)w * 4.0 / 5.0);
+  right_arrow_polygon_[6].setY((float)h * 4.0 / 5.0);
 
-  left_arrow_polygon_[0].setX(static_cast<float>(w) * 0.0 / 5.0);
-  left_arrow_polygon_[0].setY(static_cast<float>(h) * 1.0 / 2.0);
-  left_arrow_polygon_[1].setX(static_cast<float>(w) * 1.0 / 5.0);
-  left_arrow_polygon_[1].setY(static_cast<float>(h) * 1.0 / 5.0);
-  left_arrow_polygon_[2].setX(static_cast<float>(w) * 1.0 / 5.0);
-  left_arrow_polygon_[2].setY(static_cast<float>(h) * 2.0 / 5.0);
-  left_arrow_polygon_[3].setX(static_cast<float>(w) * 2.0 / 5.0);
-  left_arrow_polygon_[3].setY(static_cast<float>(h) * 2.0 / 5.0);
-  left_arrow_polygon_[4].setX(static_cast<float>(w) * 2.0 / 5.0);
-  left_arrow_polygon_[4].setY(static_cast<float>(h) * 3.0 / 5.0);
-  left_arrow_polygon_[5].setX(static_cast<float>(w) * 1.0 / 5.0);
-  left_arrow_polygon_[5].setY(static_cast<float>(h) * 3.0 / 5.0);
-  left_arrow_polygon_[6].setX(static_cast<float>(w) * 1.0 / 5.0);
-  left_arrow_polygon_[6].setY(static_cast<float>(h) * 4.0 / 5.0);
+  left_arrow_polygon_[0].setX((float)w * 0.0 / 5.0);
+  left_arrow_polygon_[0].setY((float)h * 1.0 / 2.0);
+  left_arrow_polygon_[1].setX((float)w * 1.0 / 5.0);
+  left_arrow_polygon_[1].setY((float)h * 1.0 / 5.0);
+  left_arrow_polygon_[2].setX((float)w * 1.0 / 5.0);
+  left_arrow_polygon_[2].setY((float)h * 2.0 / 5.0);
+  left_arrow_polygon_[3].setX((float)w * 2.0 / 5.0);
+  left_arrow_polygon_[3].setY((float)h * 2.0 / 5.0);
+  left_arrow_polygon_[4].setX((float)w * 2.0 / 5.0);
+  left_arrow_polygon_[4].setY((float)h * 3.0 / 5.0);
+  left_arrow_polygon_[5].setX((float)w * 1.0 / 5.0);
+  left_arrow_polygon_[5].setY((float)h * 3.0 / 5.0);
+  left_arrow_polygon_[6].setX((float)w * 1.0 / 5.0);
+  left_arrow_polygon_[6].setY((float)h * 4.0 / 5.0);
+
+  if (last_msg_ptr_ != nullptr) processMessage(last_msg_ptr_);
 }
 
 }  // namespace rviz_plugins
 
-#include <pluginlib/class_list_macros.hpp>
-PLUGINLIB_EXPORT_CLASS(rviz_plugins::TurnSignalDisplay, rviz_common::Display)
+#include <pluginlib/class_list_macros.h>
+PLUGINLIB_EXPORT_CLASS(rviz_plugins::TurnSignalDisplay, rviz::Display)

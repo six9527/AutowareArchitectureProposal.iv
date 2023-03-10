@@ -1,31 +1,53 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.0.2)
 project(kalman_filter)
 
-if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 14)
-  set(CMAKE_CXX_STANDARD_REQUIRED ON)
-  set(CMAKE_CXX_EXTENSIONS OFF)
-endif()
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic)
-endif()
+add_compile_options(-std=c++14)
 
-find_package(ament_cmake_auto REQUIRED)
-ament_auto_find_build_dependencies()
-
-find_package(eigen3_cmake_module REQUIRED)
-find_package(Eigen3 REQUIRED)
-
-ament_auto_add_library(kalman_filter SHARED
-  src/kalman_filter.cpp
-  src/time_delay_kalman_filter.cpp
-  include/kalman_filter/kalman_filter.hpp
-  include/kalman_filter/time_delay_kalman_filter.hpp
+find_package(catkin REQUIRED COMPONENTS
+  roscpp
 )
 
-if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  ament_lint_auto_find_test_dependencies()
-endif()
+find_package(Eigen3 REQUIRED)
 
-ament_auto_package()
+catkin_package(
+  INCLUDE_DIRS
+    include
+  LIBRARIES
+    kalman_filter
+    time_delay_kalman_filter
+)
+
+include_directories(
+  include
+  ${catkin_INCLUDE_DIRS}
+)
+
+add_library(kalman_filter src/kalman_filter.cpp)
+add_library(time_delay_kalman_filter src/time_delay_kalman_filter.cpp)
+
+target_link_libraries(kalman_filter
+  ${catkin_LIBRARIES}
+)
+target_link_libraries(time_delay_kalman_filter
+  ${catkin_LIBRARIES}
+)
+
+add_dependencies(kalman_filter
+  ${catkin_EXPORTED_TARGETS}
+)
+add_dependencies(time_delay_kalman_filter
+  ${catkin_EXPORTED_TARGETS}
+)
+
+install(
+  TARGETS
+    kalman_filter time_delay_kalman_filter
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+## Install project namespaced headers
+install(DIRECTORY include/${PROJECT_NAME}/
+  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+)

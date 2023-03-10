@@ -1,16 +1,3 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
 /*
  * Copyright (c) 2008, Willow Garage, Inc.
  * All rights reserved.
@@ -40,24 +27,22 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef POLAR_GRID_DISPLAY_HPP_
-#define POLAR_GRID_DISPLAY_HPP_
-
-#include <rviz_common/display.hpp>
-#include <rviz_common/display_context.hpp>
-#include <rviz_common/properties/color_property.hpp>
-#include <rviz_common/properties/enum_property.hpp>
-#include <rviz_common/properties/float_property.hpp>
-#include <rviz_common/properties/int_property.hpp>
-#include <rviz_common/properties/tf_frame_property.hpp>
-#include <rviz_common/properties/vector_property.hpp>
+#pragma once
 
 #include <OgreBillboardSet.h>
 #include <OgreManualObject.h>
 #include <OgreSceneManager.h>
 #include <OgreSceneNode.h>
+#include <rviz/display_context.h>
+#include "rviz/display.h"
+#include "rviz/properties/color_property.h"
+#include "rviz/properties/enum_property.h"
+#include "rviz/properties/float_property.h"
+#include "rviz/properties/int_property.h"
+#include "rviz/properties/tf_frame_property.h"
+#include "rviz/properties/vector_property.h"
 
-namespace rviz_plugins
+namespace rviz
 {
 /**
  * \class PolarGridDisplay
@@ -65,10 +50,9 @@ namespace rviz_plugins
  *
  * For more information see Grid
  */
-class PolarGridDisplay : public rviz_common::Display
+class PolarGridDisplay : public Display
 {
   Q_OBJECT
-
 public:
   PolarGridDisplay();
   virtual ~PolarGridDisplay();
@@ -86,18 +70,16 @@ private:
   Ogre::ManualObject * wave_manual_object_;
   float wave_range_;
 
-  rviz_common::properties::TfFrameProperty * frame_property_;
-  rviz_common::properties::FloatProperty * d_range_property_;
-  rviz_common::properties::FloatProperty * max_range_property_;
-  rviz_common::properties::FloatProperty * max_alpha_property_;
-  rviz_common::properties::FloatProperty * min_alpha_property_;
-  rviz_common::properties::ColorProperty * color_property_;
-  rviz_common::properties::FloatProperty * wave_velocity_property_;
-  rviz_common::properties::ColorProperty * wave_color_property_;
-  rviz_common::properties::FloatProperty * max_wave_alpha_property_;
-  rviz_common::properties::FloatProperty * min_wave_alpha_property_;
+  TfFrameProperty * frame_property_;
+  FloatProperty * d_range_property_;
+  FloatProperty * max_range_property_;
+  FloatProperty * max_alpha_property_;
+  FloatProperty * min_alpha_property_;
+  ColorProperty * color_property_;
+  FloatProperty * wave_velocity_property_;
+  ColorProperty * wave_color_property_;
+  FloatProperty * max_wave_alpha_property_;
+  FloatProperty * min_wave_alpha_property_;
 };
 
-}  // namespace rviz_plugins
-
-#endif  //  POLAR_GRID_DISPLAY_HPP_
+}  // namespace rviz
