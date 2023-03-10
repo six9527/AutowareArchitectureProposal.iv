@@ -1,59 +1,51 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2020 Tier IV, Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
-#include <rclcpp/rclcpp.hpp>
+#include <ros/ros.h>
+#include <autoware_perception_msgs/DynamicObjectArray.h>
 
-#include <autoware_auto_perception_msgs/msg/predicted_objects.hpp>
-
-#include <memory>
-#include <utility>
-
-class EmptyObjectsPublisher : public rclcpp::Node
+class EmptyObjectsPublisher
 {
 public:
-  EmptyObjectsPublisher() : Node("empty_objects_publisher")
+  EmptyObjectsPublisher() : nh_(""), pnh_("~")
   {
-    empty_objects_pub_ =
-      this->create_publisher<autoware_auto_perception_msgs::msg::PredictedObjects>(
-        "~/output/objects", 1);
-
-    auto timer_callback = std::bind(&EmptyObjectsPublisher::timerCallback, this);
-    const auto period = std::chrono::milliseconds(100);
-    timer_ = std::make_shared<rclcpp::GenericTimer<decltype(timer_callback)>>(
-      this->get_clock(), period, std::move(timer_callback),
-      this->get_node_base_interface()->get_context());
-    this->get_node_timers_interface()->add_timer(timer_, nullptr);
+    empty_objects_pub_ = pnh_.advertise<autoware_perception_msgs::DynamicObjectArray>("output/objects", 1);
+    timer_ = nh_.createTimer(ros::Duration(0.1), &EmptyObjectsPublisher::timerCallback, this);
   }
 
 private:
-  rclcpp::Publisher<autoware_auto_perception_msgs::msg::PredictedObjects>::SharedPtr
-    empty_objects_pub_;
-  rclcpp::TimerBase::SharedPtr timer_;
+  ros::NodeHandle nh_;
+  ros::NodeHandle pnh_;
+  ros::Publisher empty_objects_pub_;
+  ros::Timer timer_;
 
-  void timerCallback()
+  void timerCallback(const ros::TimerEvent & e)
   {
-    autoware_auto_perception_msgs::msg::PredictedObjects empty_objects;
-    empty_objects.header.frame_id = "map";
-    empty_objects.header.stamp = this->now();
-    empty_objects_pub_->publish(empty_objects);
+    autoware_perception_msgs::DynamicObjectArray empty_objects;
+    empty_objects.header.frame_id = "/map";
+    empty_objects.header.stamp = ros::Time::now();
+    empty_objects_pub_.publish(empty_objects);
   }
+
 };
 
 int main(int argc, char ** argv)
 {
-  rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<EmptyObjectsPublisher>());
-  rclcpp::shutdown();
+  ros::init(argc, argv, "empty_objects_publisher");
+  EmptyObjectsPublisher empty_objects_publisher;
+  ros::spin();
   return 0;
-}
+};

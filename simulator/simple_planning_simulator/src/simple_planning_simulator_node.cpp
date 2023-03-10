@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Tier IV, Inc. All rights reserved.
+ * Copyright 2015-2019 Autoware Foundation. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,15 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include <ros/ros.h>
-#include "dummy_perception_publisher/node.hpp"
+
+#include "simple_planning_simulator/simple_planning_simulator_core.hpp"
 
 int main(int argc, char ** argv)
 {
-  ros::init(argc, argv, "dummy_perception_publisher");
-  DummyPerceptionPublisherNode node;
-
+  ros::init(argc, argv, "simple_planning_simulator");
+  Simulator obj;
   ros::spin();
-
   return 0;
 };

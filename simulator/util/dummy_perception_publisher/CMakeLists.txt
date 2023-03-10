@@ -1,87 +1,89 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.0.2)
 project(dummy_perception_publisher)
 
-### Compile options
-if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 14)
-  set(CMAKE_CXX_STANDARD_REQUIRED ON)
-  set(CMAKE_CXX_EXTENSIONS OFF)
-endif()
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic)
-endif()
+add_compile_options(-std=c++14)
 
-# Dependencies for messages
-find_package(ament_cmake REQUIRED)
-find_package(rosidl_default_generators REQUIRED)
-find_package(autoware_auto_perception_msgs REQUIRED)
-find_package(autoware_perception_msgs REQUIRED)
-find_package(geometry_msgs REQUIRED)
-find_package(std_msgs REQUIRED)
-find_package(unique_identifier_msgs REQUIRED)
-
-rosidl_generate_interfaces(${PROJECT_NAME}
-  "msg/InitialState.msg"
-  "msg/Object.msg"
-  DEPENDENCIES autoware_auto_perception_msgs autoware_perception_msgs geometry_msgs std_msgs unique_identifier_msgs
-)
-
-# See ndt_omp package for documentation on why PCL is special
-find_package(PCL REQUIRED COMPONENTS common filters)
-find_package(ament_cmake_auto REQUIRED)
-ament_auto_find_build_dependencies()
-
-set(${PROJECT_NAME}_DEPENDENCIES
-  autoware_auto_perception_msgs
-  autoware_perception_msgs
-  pcl_conversions
-  rclcpp
+find_package(catkin REQUIRED COMPONENTS
+  message_generation
+  roscpp
   sensor_msgs
   std_msgs
   tf2
   tf2_geometry_msgs
   tf2_ros
+  autoware_perception_msgs
+  pcl_ros
+  uuid_msgs
+  unique_id
 )
 
-ament_auto_add_executable(dummy_perception_publisher_node
+add_message_files(
+  DIRECTORY msg
+  FILES
+    Object.msg
+    InitialState.msg
+)
+generate_messages(
+  DEPENDENCIES
+    std_msgs
+    geometry_msgs
+    autoware_perception_msgs
+    uuid_msgs
+)
+
+catkin_package(
+  INCLUDE_DIRS
+    include
+  CATKIN_DEPENDS
+    message_runtime
+    roscpp
+    sensor_msgs
+    tf2
+    tf2_geometry_msgs
+    tf2_ros
+    autoware_perception_msgs
+    pcl_ros
+    uuid_msgs
+    unique_id
+)
+
+include_directories(
+  include
+  ${catkin_INCLUDE_DIRS}
+)
+
+add_executable(dummy_perception_publisher_node
   src/main.cpp
   src/node.cpp
 )
 
-ament_target_dependencies(dummy_perception_publisher_node ${${PROJECT_NAME}_DEPENDENCIES})
+add_dependencies(dummy_perception_publisher_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
-target_include_directories(dummy_perception_publisher_node
-  PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include>)
+target_link_libraries(dummy_perception_publisher_node
+  ${catkin_LIBRARIES}
+)
 
-# For using message definitions from the same package
-rosidl_target_interfaces(dummy_perception_publisher_node
-  ${PROJECT_NAME} "rosidl_typesupport_cpp")
-
-# PCL dependencies – `ament_target_dependencies` doesn't respect the
-# components/modules selected above and only links in `common` ,so we need
-# to do this manually.
-target_compile_definitions(dummy_perception_publisher_node PRIVATE ${PCL_DEFINITIONS})
-target_include_directories(dummy_perception_publisher_node PRIVATE ${PCL_INCLUDE_DIRS})
-# Unfortunately, this one can't be PRIVATE because only the plain or only the
-# keyword (PRIVATE) signature of target_link_libraries can be used for one
-# target, not both. The plain signature is already used inside
-# `ament_target_dependencies` and possibly rosidl_target_interfaces.
-target_link_libraries(dummy_perception_publisher_node ${PCL_LIBRARIES})
-target_link_directories(dummy_perception_publisher_node PRIVATE ${PCL_LIBRARY_DIRS})
-
-
-ament_auto_add_executable(empty_objects_publisher
+add_executable(empty_objects_publisher
   src/empty_objects_publisher.cpp
 )
 
-if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  ament_lint_auto_find_test_dependencies()
-endif()
+add_dependencies(empty_objects_publisher ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
-ament_auto_package(
-  INSTALL_TO_SHARE
-  launch
+target_link_libraries(empty_objects_publisher
+  ${catkin_LIBRARIES}
+)
+
+install(
+  TARGETS
+    dummy_perception_publisher_node
+    empty_objects_publisher
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+install(
+  DIRECTORY
+    launch
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )

@@ -13,15 +13,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include <ros/ros.h>
-#include "dummy_perception_publisher/node.hpp"
 
-int main(int argc, char ** argv)
+#include "simple_planning_simulator/vehicle_model/sim_model_util.hpp"
+
+namespace sim_model_util
 {
-  ros::init(argc, argv, "dummy_perception_publisher");
-  DummyPerceptionPublisherNode node;
+double getDummySteerCommandWithFriction(
+  const double steer, const double steer_command, const double deadzone_delta_steer)
+{
+  const double delta_steer = std::fabs(steer_command - steer);
+  // if delta steer is too small, ignore steer command (send current steer as steer command)
+  if (delta_steer < deadzone_delta_steer) {
+    return steer;
+  }
+  return steer_command;
+}
 
-  ros::spin();
-
-  return 0;
-};
+}  // namespace sim_model_util

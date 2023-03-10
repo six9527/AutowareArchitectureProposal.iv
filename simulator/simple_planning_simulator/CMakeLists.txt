@@ -1,53 +1,77 @@
-cmake_minimum_required(VERSION 3.6)
-
+cmake_minimum_required(VERSION 3.0.2)
 project(simple_planning_simulator)
 
-### Dependencies
-find_package(ament_cmake_auto REQUIRED)
-ament_auto_find_build_dependencies()
+add_compile_options(-std=c++14)
 
-
-# Component
-ament_auto_add_library(${PROJECT_NAME} SHARED
-  include/simple_planning_simulator/simple_planning_simulator_core.hpp
-  include/simple_planning_simulator/visibility_control.hpp
-  src/simple_planning_simulator/simple_planning_simulator_core.cpp
-  src/simple_planning_simulator/vehicle_model/sim_model_interface.cpp
-  src/simple_planning_simulator/vehicle_model/sim_model_ideal_steer_vel.cpp
-  src/simple_planning_simulator/vehicle_model/sim_model_ideal_steer_acc.cpp
-  src/simple_planning_simulator/vehicle_model/sim_model_ideal_steer_acc_geared.cpp
-  src/simple_planning_simulator/vehicle_model/sim_model_delay_steer_acc.cpp
-  src/simple_planning_simulator/vehicle_model/sim_model_delay_steer_acc_geared.cpp
-)
-target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC ${tf2_INCLUDE_DIRS})
-autoware_set_compile_options(${PROJECT_NAME})
-
-target_compile_options(${PROJECT_NAME} PRIVATE -Wno-old-style-cast) # RCLCPP_ERROR_THROTTLE() has built-in old-style casts.
-
-
-# Node executable
-rclcpp_components_register_node(${PROJECT_NAME}
-  PLUGIN "simulation::simple_planning_simulator::SimplePlanningSimulator"
-  EXECUTABLE ${PROJECT_NAME}_exe
+find_package(catkin REQUIRED COMPONENTS
+  roscpp
+  std_msgs
+  tf2
+  tf2_ros
+  geometry_msgs
+  autoware_planning_msgs
+  autoware_control_msgs
+  autoware_vehicle_msgs
+  rostest
+  rosunit
 )
 
+catkin_package(
+  INCLUDE_DIRS include
+  CATKIN_DEPENDS
+    roscpp
+    std_msgs
+    tf2
+    tf2_ros
+    geometry_msgs
+    autoware_planning_msgs
+    autoware_control_msgs
+    autoware_vehicle_msgs
+)
 
-### Test
-if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  ament_lint_auto_find_test_dependencies()
+###########
+## Build ##
+###########
 
-  # Unit test
-  #ament_add_gtest(
-  #  simple_planning_simulator_unit_tests
-  #  test/test_simple_planning_simulator.cpp
-  #  TIMEOUT 120)
-  #autoware_set_compile_options(simple_planning_simulator_unit_tests)
-  #target_link_libraries(simple_planning_simulator_unit_tests ${PROJECT_NAME})
-  #target_include_directories(simple_planning_simulator_unit_tests PRIVATE "include")
-endif()
+SET(CMAKE_CXX_FLAGS "-O2 -g -Wall ${CMAKE_CXX_FLAGS}")
 
+include_directories(
+  include
+  ${catkin_INCLUDE_DIRS}
+)
 
+set(simple_planning_simulator_SRC
+  src/simple_planning_simulator_core.cpp
+  src/vehicle_model/sim_model_interface.cpp
+  src/vehicle_model/sim_model_ideal.cpp
+  src/vehicle_model/sim_model_constant_acceleration.cpp
+  src/vehicle_model/sim_model_time_delay.cpp
+  src/vehicle_model/sim_model_util.cpp
+)
+add_executable(simple_planning_simulator src/simple_planning_simulator_node.cpp ${simple_planning_simulator_SRC})
+target_link_libraries(simple_planning_simulator ${catkin_LIBRARIES})
+add_dependencies(simple_planning_simulator ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
+## Install executables and/or libraries
+install(TARGETS simple_planning_simulator
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
 
-ament_auto_package(INSTALL_TO_SHARE param launch)
+## Install project namespaced headers
+install(DIRECTORY include/${PROJECT_NAME}/
+  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION})
+
+install(
+  DIRECTORY
+    config
+    launch
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+)
+
+catkin_install_python(PROGRAMS scripts/fitParamDelayInputModel.py DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
+
+if (CATKIN_ENABLE_TESTING)
+  find_package(rostest REQUIRED)
+endif ()

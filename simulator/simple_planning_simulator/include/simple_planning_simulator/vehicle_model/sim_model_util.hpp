@@ -13,15 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include <ros/ros.h>
-#include "dummy_perception_publisher/node.hpp"
+#include <math.h>
 
-int main(int argc, char ** argv)
+namespace sim_model_util
 {
-  ros::init(argc, argv, "dummy_perception_publisher");
-  DummyPerceptionPublisherNode node;
-
-  ros::spin();
-
-  return 0;
-};
+double getDummySteerCommandWithFriction(
+  const double steer, const double steer_command, const double deadzone_delta_steer);
+}
