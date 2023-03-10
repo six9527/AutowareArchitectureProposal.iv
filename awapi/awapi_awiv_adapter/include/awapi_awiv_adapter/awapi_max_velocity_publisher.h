@@ -14,17 +14,29 @@
  * limitations under the License.
  */
 
-#include <ros/ros.h>
+#include <awapi_awiv_adapter/awapi_autoware_util.h>
 
-#include <awapi_awiv_adapter/awapi_awiv_adapter_core.h>
-
-int main(int argc, char ** argv)
+namespace autoware_api
 {
-  ros::init(argc, argv, "awapi_awiv_adapter_node");
+class AutowareIvMaxVelocityPublisher
+{
+public:
+  AutowareIvMaxVelocityPublisher(const double default_max_velocity);
+  void statePublisher(const AutowareInfo & aw_info);
 
-  autoware_api::AutowareIvAdapter node;
+private:
+  // node handle
+  ros::NodeHandle nh_;
+  ros::NodeHandle pnh_;
 
-  ros::spin();
+  // publisher
+  ros::Publisher pub_state_;
 
-  return 0;
-}
+  bool calcMaxVelocity(
+    const std_msgs::Float32::ConstPtr & max_velocity_ptr,
+    const std_msgs::Bool::ConstPtr & temporary_stop_ptr, float * max_velocity);
+
+  double default_max_velocity_;
+};
+
+}  // namespace autoware_api

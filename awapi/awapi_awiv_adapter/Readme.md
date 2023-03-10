@@ -66,11 +66,11 @@
 - get flag of exceeding stop speed or not
   - True: exceed the stop speed ( = "cannot stop before the stop line")
   - False: not exceed the stop speed ( = "no stop line in the trajectory" or "possible to stop before the stop line" )
-- MessageType: autoware_planning_msgs/StopSpeedExceedStatus
+- MessageType: std_msgs/Bool
 
-| ✓   | type                                         | name | unit | note |
-| --- | :------------------------------------------- | :--- | :--- | :--- |
-|     | autoware_planning_msgs/StopSpeedExceedStatus |      | -    |      |
+| ✓   | type          | name | unit | note |
+| --- | :------------ | :--- | :--- | :--- |
+|     | std_msgs/Bool |      | -    |      |
 
 ### /awapi/prediction/get/objects
 
@@ -104,33 +104,23 @@
 |     | bool                              | obstacle_avoidance_ready | True when obstacle avoidance is ready          |                                                       |
 |     | autoware_planning_msgs/Trajectory | candidate_path           | according to autoware_planning_msgs/Trajectory | Msg type is different from lane change candidate path |
 
-### /awapi/traffic_light/get/traffic_signals
+### /awapi/traffic_light/get/status
 
 - get recognition result of traffic light
-- MessageType: autoware_auto_perception_msgs/msg/TrafficSignalArray
+- MessageType: autoware_api_msgs/TrafficLightStateArray
 
-| ✓   | type                                                 | name | unit | note |
-| --- | :--------------------------------------------------- | :--- | :--- | :--- |
-|     | autoware_auto_perception_msgs/msg/TrafficSignalArray |      |      |      |
+| ✓   | type                                     | name | unit | note |
+| --- | :--------------------------------------- | :--- | :--- | :--- |
+|     | autoware_api_msgs/TrafficLightStateArray |      |      |      |
 
-### /awapi/traffic_light/get/nearest_traffic_signal
+### /awapi/traffic_light/get/nearest_traffic_light_status
 
 - get recognition result of nearest traffic light
-- MessageType: autoware_auto_perception_msgs/LookingTrafficSignal
+- MessageType: autoware_perception_msgs/TrafficLightStateStamped
 
-|     | type                                                 | name       | unit | note                                                          |
-| --- | :--------------------------------------------------- | :--------- | :--- | :------------------------------------------------------------ |
-|     | std_msgs/Header                                      | header     |      |                                                               |
-|     | autoware_auto_perception_msgs/TrafficSignalWithJudge | perception |      | traffic light information from autoware perception module     |
-|     | autoware_auto_perception_msgs/TrafficSignalWithJudge | external   |      | traffic light information from external tool/module           |
-|     | autoware_auto_perception_msgs/TrafficSignalWithJudge | final      |      | traffic light information used by the planning module finally |
-
-- The contents of TrafficSignalWithJudge.msg is following.
-
-|     | type                                        | name   | unit                 | note                                                           |
-| --- | :------------------------------------------ | :----- | :------------------- | :------------------------------------------------------------- |
-|     | autoware_auto_perception_msgs/TrafficSignal | signal |                      | traffic light color/arrow                                      |
-|     | uint8                                       | judge  | 0:NONE, 1:STOP, 2:GO | go/stop judgment based on the color/arrow of the traffic light |
+| ✓   | type                                              | name | unit | note |
+| --- | :------------------------------------------------ | :--- | :--- | :--- |
+|     | autoware_perception_msgs/TrafficLightStateStamped |      |      |      |
 
 ### /awapi/vehicle/get/door
 
@@ -151,16 +141,16 @@
 ### /awapi/vehicle/put/velocity
 
 - set upper velocity
-- MessageType: autoware_api_msgs/VelocityLimit
+- MessageType: std_msgs/Float32
 
-| ✓   | type                            | name | unit | note         |
-| --- | :------------------------------ | :--- | :--- | :----------- |
-| ✓   | autoware_api_msgs/VelocityLimit |      |      | max velocity |
+| ✓   | type             | name | unit | note         |
+| --- | :--------------- | :--- | :--- | :----------- |
+| ✓   | std_msgs/Float32 |      |      | max velocity |
 
 ### /awapi/vehicle/put/stop
 
 - set temporary stop signal
-- MessageType: autoware_api_msgs/StopCommand
+- MessageType: std_msgs/bool
 - Specification
 
   - send True: send upper velocity to 0
@@ -168,9 +158,9 @@
     - (if upper velocity have never received, send _default_max_velocity_ value.)
     - _default_max_velocity_ refers to the param: _/planning/scenario_planning/motion_velocity_optimizer/max_velocity_
 
-  | ✓   | type                          | name | unit | note |
-  | --- | :---------------------------- | :--- | :--- | :--- |
-  | ✓   | autoware_api_msgs/StopCommand |      |      |      |
+  | ✓   | type          | name | unit | note |
+  | --- | :------------ | :--- | :--- | :--- |
+  | ✓   | std_msgs/Bool |      |      |      |
 
 ### /awapi/autoware/put/gate_mode
 
@@ -181,14 +171,24 @@
 | --- | :----------------------------- | :--- | :--- | :--- |
 |     | autoware_control_msgs/GateMode |      |      |      |
 
+### /awapi/autoware/put/emergency_stop
+
+- send emergency_stop signal
+- MessageType: std_msgs/Bool
+- <font color="Cyan">**To enable this functionality, autoware have to be in the Remote Mode or set _/control/vehicle_cmd_gate/use_external_emergency_stop_ to true.**</font>
+
+| ✓   | type          | name | unit | note |
+| --- | :------------ | :--- | :--- | :--- |
+| ✓   | std_msgs/Bool |      |      |      |
+
 ### /awapi/autoware/put/engage
 
 - send engage signal (both of autoware/engage and vehicle/engage)
-- MessageType: autoware_vehicle_msgs/Engage
+- MessageType: std_msgs/Bool
 
-| ✓   | type                         | name | unit | note |
-| --- | :--------------------------- | :--- | :--- | :--- |
-| ✓   | autoware_vehicle_msgs/Engage |      |      |      |
+| ✓   | type          | name | unit | note |
+| --- | :------------ | :--- | :--- | :--- |
+| ✓   | std_msgs/Bool |      |      |      |
 
 ### /awapi/autoware/put/goal
 
@@ -212,30 +212,30 @@
 
 - send lane change approval flag
 - send True: start lane change when **lane_change_ready** is true
-- MessageType: autoware_planning_msgs/LaneChangeCommand
+- MessageType: std_msgs/Bool
 
-| ✓   | type                                         | name | unit | note |
-| --- | :------------------------------------------- | :--- | :--- | :--- |
-|     | autoware_planning_msgs/msg/LaneChangeCommand |      |      |      |
+| ✓   | type          | name | unit | note |
+| --- | :------------ | :--- | :--- | :--- |
+|     | std_msgs/Bool |      |      |      |
 
 ### /awapi/lane_change/put/force
 
 - send force lane change flag
 - send True: start lane change when **force_lane_change_available** is true
-- MessageType: autoware_planning_msgs/LaneChangeCommand
+- MessageType: std_msgs/Bool
 
-| ✓   | type                                     | name | unit | note |
-| --- | :--------------------------------------- | :--- | :--- | :--- |
-|     | autoware_planning_msgs/LaneChangeCommand |      |      |      |
+| ✓   | type          | name | unit | note |
+| --- | :------------ | :--- | :--- | :--- |
+|     | std_msgs/Bool |      |      |      |
 
 ### /awapi/object_avoidance/put/approval
 
 - send object avoidance approval flag
-- MessageType: autoware_planning_msgs/EnableAvoidance
+- MessageType: std_msgs/Bool
 
-| ✓   | type                                   | name | unit | note |
-| --- | :------------------------------------- | :--- | :--- | :--- |
-|     | autoware_planning_msgs/EnableAvoidance |      |      |      |
+| ✓   | type          | name | unit | note |
+| --- | :------------ | :--- | :--- | :--- |
+|     | std_msgs/Bool |      |      |      |
 
 ### /awapi/object_avoidance/put/force
 
@@ -245,25 +245,25 @@
 | ✓   | type | name | unit | note |
 | --- | :--- | :--- | :--- | :--- |
 
-### /awapi/traffic_light/put/traffic_signals
+### /awapi/traffic_light/put/traffic_light
 
 - Overwrite the recognition result of traffic light
-- MessageType: autoware_auto_perception_msgs/TrafficSignalArray
+- MessageType: autoware_perception_msgs/TrafficLightStateArray
 
-| ✓   | type                                             | name | unit | note |
-| --- | :----------------------------------------------- | :--- | :--- | :--- |
-|     | autoware_auto_perception_msgs/TrafficSignalArray |      |      |      |
+| ✓   | type                                            | name | unit | note |
+| --- | :---------------------------------------------- | :--- | :--- | :--- |
+|     | autoware_perception_msgs/TrafficLightStateArray |      |      |      |
 
 ### /awapi/vehicle/put/door
 
 - send door command
-- MessageType: autoware_api_msgs/DoorCommand
+- MessageType: std_msgs/Bool
   - send True: open door
   - send False: close door
 
-| ✓   | type                          | name | unit | note                                        |
-| --- | :---------------------------- | :--- | :--- | :------------------------------------------ |
-|     | autoware_api_msgs/DoorCommand |      |      | available only for the vehicle using pacmod |
+| ✓   | type          | name | unit | note                                        |
+| --- | :------------ | :--- | :--- | :------------------------------------------ |
+|     | std_msgs/Bool |      |      | available only for the vehicle using pacmod |
 
 ### /awapi/autoware/put/crosswalk_states
 
@@ -290,10 +290,8 @@
 ### /awapi/autoware/put/expand_stop_range
 
 - send expand range of the polygon used by obstacle stop [m]
-- MessageType: autoware_planning_msgs/ExpandStopRange
+- MessageType: std_msgs/Float32
 
-| ✓   | type                                   | name | unit | note |
-| --- | :------------------------------------- | :--- | :--- | :--- |
-|     | autoware_planning_msgs/ExpandStopRange |      |      |      |
-
----
+| ✓   | type    | name | unit | note |
+| --- | :------ | :--- | :--- | :--- |
+|     | Float32 |      |      |      |

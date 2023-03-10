@@ -1,51 +1,46 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-#include "awapi_awiv_adapter/awapi_autoware_state_publisher.hpp"
-
-#include "autoware_iv_auto_msgs_converter/autoware_iv_auto_msgs_converter.hpp"
-#include "awapi_awiv_adapter/diagnostics_filter.hpp"
+/*
+ * Copyright 2020 Tier IV, Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #include <regex>
-#include <string>
-#include <vector>
+
+#include <awapi_awiv_adapter/awapi_autoware_state_publisher.h>
+#include <awapi_awiv_adapter/diagnostics_filter.h>
 
 namespace autoware_api
 {
-AutowareIvAutowareStatePublisher::AutowareIvAutowareStatePublisher(rclcpp::Node & node)
-: logger_(node.get_logger().get_child("awapi_awiv_autoware_state_publisher")),
-  clock_(node.get_clock()),
-  arrived_goal_(false)
+AutowareIvAutowareStatePublisher::AutowareIvAutowareStatePublisher()
+: nh_(), pnh_("~"), arrived_goal_(false)
 {
   // publisher
-  pub_state_ =
-    node.create_publisher<autoware_api_msgs::msg::AwapiAutowareStatus>("output/autoware_status", 1);
+  pub_state_ = pnh_.advertise<autoware_api_msgs::AwapiAutowareStatus>("output/autoware_status", 1);
 }
 
 void AutowareIvAutowareStatePublisher::statePublisher(const AutowareInfo & aw_info)
 {
-  autoware_api_msgs::msg::AwapiAutowareStatus status;
+  autoware_api_msgs::AwapiAutowareStatus status;
 
-  // input header
+  //input header
   status.header.frame_id = "base_link";
-  status.header.stamp = clock_->now();
+  status.header.stamp = ros::Time::now();
 
   // get all info
   getAutowareStateInfo(aw_info.autoware_state_ptr, &status);
   getControlModeInfo(aw_info.control_mode_ptr, &status);
   getGateModeInfo(aw_info.gate_mode_ptr, &status);
-  getEmergencyStateInfo(aw_info.emergency_state_ptr, &status);
+  getIsEmergencyInfo(aw_info.is_emergency_ptr, &status);
   getCurrentMaxVelInfo(aw_info.current_max_velocity_ptr, &status);
   getHazardStatusInfo(aw_info, &status);
   getStopReasonInfo(aw_info.stop_reason_ptr, &status);
@@ -54,44 +49,42 @@ void AutowareIvAutowareStatePublisher::statePublisher(const AutowareInfo & aw_in
   getGlobalRptInfo(aw_info.global_rpt_ptr, &status);
 
   // publish info
-  pub_state_->publish(status);
+  pub_state_.publish(status);
 }
 
 void AutowareIvAutowareStatePublisher::getAutowareStateInfo(
-  const autoware_auto_system_msgs::msg::AutowareState::ConstSharedPtr & autoware_state_ptr,
-  autoware_api_msgs::msg::AwapiAutowareStatus * status)
+  const autoware_system_msgs::AutowareState::ConstPtr & autoware_state_ptr,
+  autoware_api_msgs::AwapiAutowareStatus * status)
 {
   if (!autoware_state_ptr) {
-    RCLCPP_DEBUG_STREAM_THROTTLE(logger_, *clock_, 5000 /* ms */, "autoware_state is nullptr");
+    ROS_DEBUG_STREAM_THROTTLE(5.0, "[AutowareIvAutowareStatePublisher] autoware_state is nullptr");
     return;
   }
 
   // get autoware_state
-  using autoware_iv_auto_msgs_converter::convert;
-  status->autoware_state = convert(*autoware_state_ptr).state;
+  status->autoware_state = autoware_state_ptr->state;
   status->arrived_goal = isGoal(autoware_state_ptr);
 }
 
 void AutowareIvAutowareStatePublisher::getControlModeInfo(
-  const autoware_auto_vehicle_msgs::msg::ControlModeReport::ConstSharedPtr & control_mode_ptr,
-  autoware_api_msgs::msg::AwapiAutowareStatus * status)
+  const autoware_vehicle_msgs::ControlMode::ConstPtr & control_mode_ptr,
+  autoware_api_msgs::AwapiAutowareStatus * status)
 {
   if (!control_mode_ptr) {
-    RCLCPP_DEBUG_STREAM_THROTTLE(logger_, *clock_, 5000 /* ms */, "control mode is nullptr");
+    ROS_DEBUG_STREAM_THROTTLE(5.0, "[AutowareIvAutowareStatePublisher] control mode is nullptr");
     return;
   }
 
   // get control mode
-  using autoware_iv_auto_msgs_converter::convert;
-  status->control_mode = convert(*control_mode_ptr).data;
+  status->control_mode = control_mode_ptr->data;
 }
 
 void AutowareIvAutowareStatePublisher::getGateModeInfo(
-  const autoware_control_msgs::msg::GateMode::ConstSharedPtr & gate_mode_ptr,
-  autoware_api_msgs::msg::AwapiAutowareStatus * status)
+  const autoware_control_msgs::GateMode::ConstPtr & gate_mode_ptr,
+  autoware_api_msgs::AwapiAutowareStatus * status)
 {
   if (!gate_mode_ptr) {
-    RCLCPP_DEBUG_STREAM_THROTTLE(logger_, *clock_, 5000 /* ms */, "gate mode is nullptr");
+    ROS_DEBUG_STREAM_THROTTLE(5.0, "[AutowareIvAutowareStatePublisher] gate mode is nullptr");
     return;
   }
 
@@ -99,64 +92,53 @@ void AutowareIvAutowareStatePublisher::getGateModeInfo(
   status->gate_mode = gate_mode_ptr->data;
 }
 
-void AutowareIvAutowareStatePublisher::getEmergencyStateInfo(
-  const autoware_auto_system_msgs::msg::EmergencyState::ConstSharedPtr & emergency_state_ptr,
-  autoware_api_msgs::msg::AwapiAutowareStatus * status)
+void AutowareIvAutowareStatePublisher::getIsEmergencyInfo(
+  const std_msgs::Bool::ConstPtr & is_emergency_ptr,
+  autoware_api_msgs::AwapiAutowareStatus * status)
 {
-  if (!emergency_state_ptr) {
-    RCLCPP_DEBUG_STREAM_THROTTLE(logger_, *clock_, 5000 /* ms */, "emergency_state is nullptr");
+  if (!is_emergency_ptr) {
+    ROS_DEBUG_STREAM_THROTTLE(5.0, "[AutowareIvAutowareStatePublisher] is_emergency is nullptr");
     return;
   }
 
   // get emergency
-  using autoware_auto_system_msgs::msg::EmergencyState;
-  status->emergency_stopped = (emergency_state_ptr->state == EmergencyState::MRM_OPERATING) ||
-                              (emergency_state_ptr->state == EmergencyState::MRM_SUCCEEDED) ||
-                              (emergency_state_ptr->state == EmergencyState::MRM_FAILED);
+  status->emergency_stopped = is_emergency_ptr->data;
 }
 
 void AutowareIvAutowareStatePublisher::getCurrentMaxVelInfo(
-  const autoware_planning_msgs::msg::VelocityLimit::ConstSharedPtr & current_max_velocity_ptr,
-  autoware_api_msgs::msg::AwapiAutowareStatus * status)
+  const std_msgs::Float32::ConstPtr current_max_velocity_ptr,
+  autoware_api_msgs::AwapiAutowareStatus * status)
 {
   if (!current_max_velocity_ptr) {
-    RCLCPP_DEBUG_STREAM_THROTTLE(
-      logger_, *clock_, 5000 /* ms */,
-      "[AutowareIvAutowareStatePublisher] current_max_velocity is nullptr");
+    ROS_DEBUG_STREAM_THROTTLE(
+      5.0, "[AutowareIvAutowareStatePublisher] currrent_max_velocity is nullptr");
     return;
   }
 
-  // get current max velocity
-  status->current_max_velocity = current_max_velocity_ptr->max_velocity;
+  //get current max velocity
+  status->current_max_velocity = current_max_velocity_ptr->data;
 }
 
 void AutowareIvAutowareStatePublisher::getHazardStatusInfo(
-  const AutowareInfo & aw_info, autoware_api_msgs::msg::AwapiAutowareStatus * status)
+  const AutowareInfo & aw_info, autoware_api_msgs::AwapiAutowareStatus * status)
 {
   if (!aw_info.autoware_state_ptr) {
-    RCLCPP_DEBUG_STREAM_THROTTLE(
-      logger_, *clock_, 5000 /* ms */,
-      "[AutowareIvAutowareStatePublisher] autoware_state is nullptr");
+    ROS_DEBUG_STREAM_THROTTLE(5.0, "[AutowareIvAutowareStatePublisher] autoware_state is nullptr");
     return;
   }
 
   if (!aw_info.control_mode_ptr) {
-    RCLCPP_DEBUG_STREAM_THROTTLE(
-      logger_, *clock_, 5000 /* ms */,
-      "[AutowareIvAutowareStatePublisher] control_mode is nullptr");
+    ROS_DEBUG_STREAM_THROTTLE(5.0, "[AutowareIvAutowareStatePublisher] control_mode is nullptr");
     return;
   }
 
   if (!aw_info.hazard_status_ptr) {
-    RCLCPP_DEBUG_STREAM_THROTTLE(
-      logger_, *clock_, 5000 /* ms */,
-      "[AutowareIvAutowareStatePublisher] hazard_status is nullptr");
+    ROS_DEBUG_STREAM_THROTTLE(5.0, "[AutowareIvAutowareStatePublisher] hazard_status is nullptr");
     return;
   }
 
   // get emergency
-  using autoware_iv_auto_msgs_converter::convert;
-  status->hazard_status = convert(*aw_info.hazard_status_ptr);
+  status->hazard_status = *aw_info.hazard_status_ptr;
 
   // filter leaf diagnostics
   status->hazard_status.status.diagnostics_spf =
@@ -167,14 +149,28 @@ void AutowareIvAutowareStatePublisher::getHazardStatusInfo(
     diagnostics_filter::extractLeafDiagnostics(status->hazard_status.status.diagnostics_sf);
   status->hazard_status.status.diagnostics_nf =
     diagnostics_filter::extractLeafDiagnostics(status->hazard_status.status.diagnostics_nf);
+
+  // filter by state
+  if (aw_info.autoware_state_ptr->state != autoware_system_msgs::AutowareState::Emergency) {
+    status->hazard_status.status.diagnostics_spf = {};
+    status->hazard_status.status.diagnostics_lf = {};
+    status->hazard_status.status.diagnostics_sf = {};
+  }
+
+  // filter by control_mode
+  if (aw_info.control_mode_ptr->data == autoware_vehicle_msgs::ControlMode::MANUAL) {
+    status->hazard_status.status.diagnostics_spf = {};
+    status->hazard_status.status.diagnostics_lf = {};
+    status->hazard_status.status.diagnostics_sf = {};
+  }
 }
 
 void AutowareIvAutowareStatePublisher::getStopReasonInfo(
-  const autoware_planning_msgs::msg::StopReasonArray::ConstSharedPtr & stop_reason_ptr,
-  autoware_api_msgs::msg::AwapiAutowareStatus * status)
+  const autoware_planning_msgs::StopReasonArray::ConstPtr & stop_reason_ptr,
+  autoware_api_msgs::AwapiAutowareStatus * status)
 {
   if (!stop_reason_ptr) {
-    RCLCPP_DEBUG_STREAM_THROTTLE(logger_, *clock_, 5000 /* ms */, "stop reason is nullptr");
+    ROS_DEBUG_STREAM_THROTTLE(5.0, "[AutowareIvAutowareStatePublisher] stop reason is nullptr");
     return;
   }
 
@@ -182,11 +178,10 @@ void AutowareIvAutowareStatePublisher::getStopReasonInfo(
 }
 
 void AutowareIvAutowareStatePublisher::getDiagInfo(
-  const AutowareInfo & aw_info, autoware_api_msgs::msg::AwapiAutowareStatus * status)
+  const AutowareInfo & aw_info, autoware_api_msgs::AwapiAutowareStatus * status)
 {
   if (!aw_info.diagnostic_ptr) {
-    RCLCPP_DEBUG_STREAM_THROTTLE(
-      logger_, *clock_, 5000 /* ms */, "[AutowareIvAutowareStatePublisher] diagnostics is nullptr");
+    ROS_DEBUG_STREAM_THROTTLE(5.0, "[AutowareIvAutowareStatePublisher] diagnostics is nullptr");
     return;
   }
 
@@ -197,59 +192,61 @@ void AutowareIvAutowareStatePublisher::getDiagInfo(
 // This function is tentative and should be replaced with getHazardStatusInfo.
 // TODO(Kenji Miyake): Make getErrorDiagInfo users to use getHazardStatusInfo.
 void AutowareIvAutowareStatePublisher::getErrorDiagInfo(
-  const AutowareInfo & aw_info, autoware_api_msgs::msg::AwapiAutowareStatus * status)
+  const AutowareInfo & aw_info, autoware_api_msgs::AwapiAutowareStatus * status)
 {
-  using autoware_auto_system_msgs::msg::AutowareState;
-  using autoware_auto_vehicle_msgs::msg::ControlModeReport;
-
   if (!aw_info.autoware_state_ptr) {
-    RCLCPP_DEBUG_STREAM_THROTTLE(
-      logger_, *clock_, 5000 /* ms */,
-      "[AutowareIvAutowareStatePublisher] autoware_state is nullptr");
+    ROS_DEBUG_STREAM_THROTTLE(5.0, "[AutowareIvAutowareStatePublisher] autoware_state is nullptr");
     return;
   }
 
   if (!aw_info.control_mode_ptr) {
-    RCLCPP_DEBUG_STREAM_THROTTLE(
-      logger_, *clock_, 5000 /* ms */,
-      "[AutowareIvAutowareStatePublisher] control mode is nullptr");
+    ROS_DEBUG_STREAM_THROTTLE(5.0, "[AutowareIvAutowareStatePublisher] control_mode is nullptr");
     return;
   }
 
   if (!aw_info.diagnostic_ptr) {
-    RCLCPP_DEBUG_STREAM_THROTTLE(
-      logger_, *clock_, 5000 /* ms */, "[AutowareIvAutowareStatePublisher] diagnostics is nullptr");
+    ROS_DEBUG_STREAM_THROTTLE(5.0, "[AutowareIvAutowareStatePublisher] diagnostics is nullptr");
     return;
   }
 
   if (!aw_info.hazard_status_ptr) {
-    RCLCPP_DEBUG_STREAM_THROTTLE(
-      logger_, *clock_, 5000 /* ms */,
-      "[AutowareIvAutowareStatePublisher] hazard_status is nullptr");
+    ROS_DEBUG_STREAM_THROTTLE(5.0, "[AutowareIvAutowareStatePublisher] hazard_status is nullptr");
+    return;
+  }
+
+  // filter by state
+  if (aw_info.autoware_state_ptr->state != autoware_system_msgs::AutowareState::Emergency) {
+    status->error_diagnostics = {};
+    return;
+  }
+
+  // filter by control_mode
+  if (aw_info.control_mode_ptr->data == autoware_vehicle_msgs::ControlMode::MANUAL) {
+    status->error_diagnostics = {};
     return;
   }
 
   // get diag
-  using diagnostic_msgs::msg::DiagnosticStatus;
+  using diagnostic_msgs::DiagnosticStatus;
   const auto & hazard_status = aw_info.hazard_status_ptr->status;
-  std::vector<DiagnosticStatus> error_diagnostics;
+  std::vector<diagnostic_msgs::DiagnosticStatus> error_diagnostics;
 
-  for (const auto & hazard_diag : hazard_status.diag_single_point_fault) {
+  for (const auto & hazard_diag : hazard_status.diagnostics_spf) {
     auto diag = hazard_diag;
     diag.message = "[Single Point Fault]" + hazard_diag.message;
     error_diagnostics.push_back(diag);
   }
-  for (const auto & hazard_diag : hazard_status.diag_latent_fault) {
+  for (const auto & hazard_diag : hazard_status.diagnostics_lf) {
     auto diag = hazard_diag;
     diag.message = "[Latent Fault]" + hazard_diag.message;
     error_diagnostics.push_back(diag);
   }
-  for (const auto & hazard_diag : hazard_status.diag_safe_fault) {
+  for (const auto & hazard_diag : hazard_status.diagnostics_sf) {
     auto diag = hazard_diag;
     diag.message = "[Safe Fault]" + hazard_diag.message;
     error_diagnostics.push_back(diag);
   }
-  for (const auto & hazard_diag : hazard_status.diag_no_fault) {
+  for (const auto & hazard_diag : hazard_status.diagnostics_nf) {
     auto diag = hazard_diag;
     diag.message = "[No Fault]" + hazard_diag.message;
     diag.level = DiagnosticStatus::OK;
@@ -261,36 +258,36 @@ void AutowareIvAutowareStatePublisher::getErrorDiagInfo(
 }
 
 void AutowareIvAutowareStatePublisher::getGlobalRptInfo(
-  const pacmod3_msgs::msg::GlobalRpt::ConstSharedPtr & global_rpt_ptr,
-  autoware_api_msgs::msg::AwapiAutowareStatus * status)
+  const pacmod_msgs::GlobalRpt::ConstPtr & global_rpt_ptr,
+  autoware_api_msgs::AwapiAutowareStatus * status)
 {
   if (!global_rpt_ptr) {
-    RCLCPP_DEBUG_STREAM_THROTTLE(logger_, *clock_, 5000 /* ms */, "global_rpt is nullptr");
+    ROS_DEBUG_STREAM_THROTTLE(5.0, "[AutowareIvAutowareStatePublisher] global_rpt is nullptr");
     return;
   }
 
   // get global_rpt
-  status->autonomous_overridden = global_rpt_ptr->override_active;
+  status->autonomous_overriden = global_rpt_ptr->override_active;
 }
 
 bool AutowareIvAutowareStatePublisher::isGoal(
-  const autoware_auto_system_msgs::msg::AutowareState::ConstSharedPtr & autoware_state)
+  const autoware_system_msgs::AutowareState::ConstPtr & autoware_state)
 {
-  // rename
+  //rename
   const auto & aw_state = autoware_state->state;
 
-  if (aw_state == autoware_auto_system_msgs::msg::AutowareState::ARRIVED_GOAL) {
+  if (aw_state == autoware_system_msgs::AutowareState::ArrivedGoal) {
     arrived_goal_ = true;
-  } else if (  // NOLINT
-    prev_state_ == autoware_auto_system_msgs::msg::AutowareState::DRIVING &&
-    aw_state == autoware_auto_system_msgs::msg::AutowareState::WAITING_FOR_ROUTE) {
+  } else if (
+    prev_state_ == autoware_system_msgs::AutowareState::Driving &&
+    aw_state == autoware_system_msgs::AutowareState::WaitingForRoute) {
     arrived_goal_ = true;
   }
 
   if (
-    aw_state == autoware_auto_system_msgs::msg::AutowareState::WAITING_FOR_ENGAGE ||
-    aw_state == autoware_auto_system_msgs::msg::AutowareState::DRIVING) {
-    // cancel goal state
+    aw_state == autoware_system_msgs::AutowareState::WaitingForEngage ||
+    aw_state == autoware_system_msgs::AutowareState::Driving) {
+    //cancel goal state
     arrived_goal_ = false;
   }
 

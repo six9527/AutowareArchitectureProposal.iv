@@ -14,17 +14,23 @@
  * limitations under the License.
  */
 
-#include <ros/ros.h>
+#ifndef AWAPI_PACMOD_UTIL_H
+#define AWAPI_PACMOD_UTIL_H
 
-#include <awapi_awiv_adapter/awapi_awiv_adapter_core.h>
+#include <autoware_api_msgs/DoorStatus.h>
+#include <pacmod_msgs/SystemCmdInt.h>
+#include <pacmod_msgs/SystemRptInt.h>
+#include <std_msgs/Bool.h>
 
-int main(int argc, char ** argv)
+namespace autoware_api
 {
-  ros::init(argc, argv, "awapi_awiv_adapter_node");
+namespace pacmod_util
+{
+autoware_api_msgs::DoorStatus getDoorStatusMsg(const pacmod_msgs::SystemRptInt::ConstPtr & msg_ptr);
+pacmod_msgs::SystemCmdInt createClearOverrideDoorCommand();
+pacmod_msgs::SystemCmdInt createDoorCommand(const std_msgs::Bool::ConstPtr & msg_ptr);
+}  // namespace pacmod_util
 
-  autoware_api::AutowareIvAdapter node;
+}  // namespace autoware_api
 
-  ros::spin();
-
-  return 0;
-}
+#endif  // AWAPI_AUTOWARE_UTIL_H
