@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.0.2)
 project(lidar_apollo_instance_segmentation)
 
 option(CUDA_VERBOSE "Verbose output of CUDA modules" OFF)
@@ -90,30 +90,56 @@ if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
     execute_process(COMMAND gdown "https://drive.google.com/uc?id=1izpNotNxS6mrYIzJwHQ_EyX_IPDU-MBr" -O ${PATH}/vls-128.caffemodel)
   endif()
 
-  find_package(ament_cmake_auto REQUIRED)
-  ament_auto_find_build_dependencies()
-  find_package(PCL REQUIRED)
-
-  if(NOT CMAKE_CXX_STANDARD)
-    set(CMAKE_CXX_STANDARD 14)
-    set(CMAKE_CXX_STANDARD_REQUIRED ON)
-    set(CMAKE_CXX_EXTENSIONS OFF)
-  endif()
-  if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    add_compile_options(-Wall -Wextra -Wpedantic -Wno-deprecated-declarations -Werror)
-  endif()
+  find_package(catkin REQUIRED COMPONENTS
+    roscpp
+    roslib
+    pcl_ros
+    tf2
+    tf2_geometry_msgs
+    tf2_eigen
+    tf2_ros
+    autoware_perception_msgs
+  )
+  set(CMAKE_CXX_STANDARD 14)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -O3")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_MWAITXINTRIN_H_INCLUDED")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_FORCE_INLINES")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__STRICT_ANSI__")
 
-  include_directories(
-    lib/include
-    ${CUDA_INCLUDE_DIRS}
-    ${PCL_INCLUDE_DIRS}
+  catkin_package(
+    INCLUDE_DIRS
+      include
+    CATKIN_DEPENDS
+      roscpp
+      roslib
+      pcl_ros
+      autoware_perception_msgs
   )
 
-  ament_auto_add_library(tensorrt_apollo_cnn_lib SHARED
+  include_directories(
+    include
+    lib/include
+    ${CUDA_INCLUDE_DIRS}
+    ${catkin_INCLUDE_DIRS}
+    ${PCL_INCLUDE_DIR}
+  )
+
+  add_executable(lidar_apollo_instance_segmentation_node
+  src/main.cpp
+  src/node.cpp
+  src/detector.cpp
+  src/log_table.cpp
+  src/feature_generator.cpp
+  src/feature_map.cpp
+  src/cluster2d.cpp
+  src/debugger.cpp
+)
+
+  add_dependencies(lidar_apollo_instance_segmentation_node
+    ${catkin_EXPORTED_TARGETS}
+  )
+
+  add_library(tensorrt_apollo_cnn_lib
     lib/src/TrtNet.cpp
   )
 
@@ -125,51 +151,42 @@ if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
     ${CUBLAS_LIBRARIES}
     ${CUDA_curand_LIBRARY}
     ${CUDNN_LIBRARY}
-    ${PCL_LIBRARIES}
   )
 
-  ament_auto_add_library(lidar_apollo_instance_segmentation SHARED
-    src/node.cpp
-    src/detector.cpp
-    src/log_table.cpp
-    src/feature_generator.cpp
-    src/feature_map.cpp
-    src/cluster2d.cpp
-    src/debugger.cpp
-  )
-
-  target_link_libraries(lidar_apollo_instance_segmentation
+  target_link_libraries(lidar_apollo_instance_segmentation_node
+    ${catkin_LIBRARIES}
     tensorrt_apollo_cnn_lib
   )
 
-  rclcpp_components_register_node(lidar_apollo_instance_segmentation
-    PLUGIN "LidarInstanceSegmentationNode"
-    EXECUTABLE lidar_apollo_instance_segmentation_node
+
+  install(
+    TARGETS
+      tensorrt_apollo_cnn_lib
+      lidar_apollo_instance_segmentation_node
+    ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+    LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+    RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
   )
 
-if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  ament_lint_auto_find_test_dependencies()
-endif()
+  install(DIRECTORY launch/
+    DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch
+  )
 
-  ament_auto_package(INSTALL_TO_SHARE
-    launch
-    config
-    data
+  install(DIRECTORY data/
+    DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/data
+  )
+
+  install(DIRECTORY include/
+    DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}/${PROJECT_NAME}/
   )
 
 else()
-  find_package(ament_cmake_auto REQUIRED)
-  ament_auto_find_build_dependencies()
-
-if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  ament_lint_auto_find_test_dependencies()
-endif()
+  find_package(catkin REQUIRED)
+  catkin_package()
 
   # to avoid launch file missing without a gpu
-  ament_auto_package(INSTALL_TO_SHARE
-    launch
+  install(DIRECTORY launch/
+    DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch
   )
 
 endif()

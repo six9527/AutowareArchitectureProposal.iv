@@ -1,28 +1,31 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2020 Tier IV, Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+#include "successive_shortest_path.h"
 
-#include "multi_object_tracker/data_association/solver/successive_shortest_path.hpp"
-
-#include <algorithm>
-#include <cassert>
-#include <functional>
+// #include <algorithm>
+// #include <cstdio>
+// #include <limits>
 #include <queue>
-#include <unordered_map>
-#include <utility>
 #include <vector>
+// #include <unordered_set>
+// #include <iostream>
+#include <cassert>
+// #include <chrono>
 
-namespace gnn_solver
+namespace assignment_problem
 {
 struct ResidualEdge
 {
@@ -43,7 +46,7 @@ struct ResidualEdge
   }
 };
 
-void SSP::maximizeLinearAssignment(
+void MaximizeLinearAssignment(
   const std::vector<std::vector<double>> & cost, std::unordered_map<int, int> * direct_assignment,
   std::unordered_map<int, int> * reverse_assignment)
 {
@@ -66,16 +69,16 @@ void SSP::maximizeLinearAssignment(
   int n_agents = cost.size();
   int n_tasks = cost.at(0).size();
 
-  int n_dummies;
+  int n_dummys;
   if (sparse_cost) {
-    n_dummies = n_agents;
+    n_dummys = n_agents;
   } else {
-    n_dummies = 0;
+    n_dummys = 0;
   }
 
   int source = 0;
   int sink = n_agents + n_tasks + 1;
-  int n_nodes = n_agents + n_tasks + n_dummies + 2;
+  int n_nodes = n_agents + n_tasks + n_dummys + 2;
 
   // // Print cost matrix
   // std::cout << std::endl;
@@ -91,13 +94,12 @@ void SSP::maximizeLinearAssignment(
   // std::chrono::system_clock::time_point start_time, end_time;
   // start_time = std::chrono::system_clock::now();
 
-  // Adjacency list of residual graph (index: nodes)
+  // Adjacency list of residual graph (indice: nodes)
   //     - 0: source node
   //     - {1, ...,  n_agents}: agent nodes
   //     - {n_agents+1, ...,  n_agents+n_tasks}: task nodes
   //     - n_agents+n_tasks+1: sink node
-  //     - {n_agents+n_tasks+2, ..., n_agents+n_tasks+1+n_agents}:
-  //       dummy node (when sparse_cost is true)
+  //     - {n_agents+n_tasks+2, ..., n_agents+n_tasks+1+n_agents}: dummy node (when sparse_cost is true)
   std::vector<std::vector<ResidualEdge>> adjacency_list(n_nodes);
 
   // Reserve memory
@@ -113,9 +115,9 @@ void SSP::maximizeLinearAssignment(
       adjacency_list.at(v).reserve(n_agents + 1);
     } else if (v == sink) {
       // Sink
-      adjacency_list.at(v).reserve(n_tasks + n_dummies);
+      adjacency_list.at(v).reserve(n_tasks + n_dummys);
     } else {
-      // Dummies
+      // Dummys
       adjacency_list.at(v).reserve(2);
     }
   }
@@ -181,6 +183,23 @@ void SSP::maximizeLinearAssignment(
     }
   }
 
+  // // Print adjacency list
+  // std::cout << std::endl;
+  // for (int v = 0; v < n_nodes; v++)
+  // {
+  //   std::cout << v << ": ";
+  //   for (auto it_incident_edge = adjacency_list.at(v).cbegin(); it_incident_edge != adjacency_list.at(v).cend();
+  //   it_incident_edge++)
+  //   {
+  //     std::cout << "(" << it_incident_edge->first << ", " << it_incident_edge->second.cost << ")";
+  //   }
+  //   std::cout << std::endl;
+  // }
+
+  // end_time = std::chrono::system_clock::now();
+  // double time = static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(end_time -
+  // start_time).count() / 1000.0); std::cout << " " << time << " ";
+
   // Maximum flow value
   const int max_flow = std::min(n_agents, n_tasks);
 
@@ -188,36 +207,36 @@ void SSP::maximizeLinearAssignment(
   std::vector<double> potentials(n_nodes, 0);
 
   // Shortest path lengths
-  std::vector<double> distances(n_nodes, INF_DIST);
+  std::vector<double> dists(n_nodes, INF_DIST);
 
   // Whether previously visited the node or not
   std::vector<bool> is_visited(n_nodes, false);
 
   // Parent node (<prev_node, edge_index>)
-  std::vector<std::pair<int, int>> prev_values(n_nodes);
+  std::vector<std::pair<int, int>> prevs(n_nodes);
 
   for (int i = 0; i < max_flow; ++i) {
     // Initialize priority queue (<distance, node>)
     std::priority_queue<
       std::pair<double, int>, std::vector<std::pair<double, int>>,
       std::greater<std::pair<double, int>>>
-      p_queue;
+      pqueue;
 
     // Reset all trajectory states
     if (i > 0) {
-      std::fill(distances.begin(), distances.end(), INF_DIST);
+      std::fill(dists.begin(), dists.end(), INF_DIST);
       std::fill(is_visited.begin(), is_visited.end(), false);
     }
 
     // Start trajectory from the source node
-    p_queue.push(std::make_pair(0, source));
-    distances.at(source) = 0;
+    pqueue.push(std::make_pair(0, source));
+    dists.at(source) = 0;
 
-    while (!p_queue.empty()) {
+    while (!pqueue.empty()) {
       // Get the next element
-      std::pair<double, int> cur_elem = p_queue.top();
+      std::pair<double, int> cur_elem = pqueue.top();
       // std::cout << "[pop]: (" << cur_elem.first << ", " << cur_elem.second << ")" << std::endl;
-      p_queue.pop();
+      pqueue.pop();
 
       double cur_node_dist = cur_elem.first;
       int cur_node = cur_elem.second;
@@ -226,7 +245,7 @@ void SSP::maximizeLinearAssignment(
       if (is_visited.at(cur_node)) {
         continue;
       }
-      assert(cur_node_dist == distances.at(cur_node));
+      assert(cur_node_dist == dists.at(cur_node));
 
       // Mark as visited
       is_visited.at(cur_node) = true;
@@ -247,19 +266,18 @@ void SSP::maximizeLinearAssignment(
           double reduced_cost =
             it_incident_edge->cost + potentials.at(cur_node) - potentials.at(it_incident_edge->dst);
           assert(reduced_cost >= 0);
-          if (distances.at(it_incident_edge->dst) > reduced_cost) {
-            distances.at(it_incident_edge->dst) = reduced_cost;
-            prev_values.at(it_incident_edge->dst) =
+          if (dists.at(it_incident_edge->dst) > reduced_cost) {
+            dists.at(it_incident_edge->dst) = reduced_cost;
+            prevs.at(it_incident_edge->dst) =
               std::make_pair(cur_node, it_incident_edge - adjacency_list.at(cur_node).cbegin());
             // std::cout << "[push]: (" << reduced_cost << ", " << next_v << ")" << std::endl;
-            p_queue.push(std::make_pair(reduced_cost, it_incident_edge->dst));
+            pqueue.push(std::make_pair(reduced_cost, it_incident_edge->dst));
           }
         }
       }
     }
 
-    // Shortest path length to sink is greater than MAX_COST,
-    // which means no non-dummy routes left, terminate
+    // Shortest path length to sink is greater than MAX_COST, which means no non-dummy routes left ,terminate
     if (potentials.at(sink) >= MAX_COST) {
       break;
     }
@@ -267,7 +285,7 @@ void SSP::maximizeLinearAssignment(
     // Update potentials of unvisited nodes
     for (int v = 0; v < n_nodes; ++v) {
       if (!is_visited.at(v)) {
-        potentials.at(v) += distances.at(sink);
+        potentials.at(v) += dists.at(sink);
       }
     }
     // //Print potentials
@@ -281,8 +299,7 @@ void SSP::maximizeLinearAssignment(
     int v = sink;
     int prev_v;
     while (v != source) {
-      ResidualEdge & e_forward =
-        adjacency_list.at(prev_values.at(v).first).at(prev_values.at(v).second);
+      ResidualEdge & e_forward = adjacency_list.at(prevs.at(v).first).at(prevs.at(v).second);
       assert(e_forward.dst == v);
       ResidualEdge & e_backward = adjacency_list.at(v).at(e_forward.reverse);
       prev_v = e_backward.dst;
@@ -366,5 +383,7 @@ void SSP::maximizeLinearAssignment(
     }
   }
 #endif
+
+  return;
 }
-}  // namespace gnn_solver
+}  // namespace assignment_problem

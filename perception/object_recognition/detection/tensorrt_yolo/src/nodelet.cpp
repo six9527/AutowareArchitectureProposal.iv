@@ -1,28 +1,21 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2020 Tier IV, Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #include "tensorrt_yolo/nodelet.hpp"
-
-#include <autoware_auto_perception_msgs/msg/object_classification.hpp>
-
 #include <glob.h>
-
-#include <algorithm>
-#include <memory>
-#include <string>
-#include <utility>
-#include <vector>
 
 namespace
 {
@@ -40,71 +33,67 @@ std::vector<std::string> getFilePath(const std::string & input_dir)
 }  // namespace
 namespace object_recognition
 {
-TensorrtYoloNodelet::TensorrtYoloNodelet(const rclcpp::NodeOptions & options)
-: Node("tensorrt_yolo", options)
+void TensorrtYoloNodelet::onInit()
 {
-  using std::placeholders::_1;
-
-  std::string onnx_file = declare_parameter("onnx_file", "");
-  std::string engine_file = declare_parameter("engine_file", "");
-  std::string label_file = declare_parameter("label_file", "");
-  std::string calib_image_directory = declare_parameter("calib_image_directory", "");
-  std::string calib_cache_file = declare_parameter("calib_cache_file", "");
-  std::string mode = declare_parameter("mode", "FP32");
-  yolo_config_.num_anchors = declare_parameter("num_anchors", 3);
-  auto anchors = declare_parameter(
-    "anchors", std::vector<double>{
-                 10, 13, 16, 30, 33, 23, 30, 61, 62, 45, 59, 119, 116, 90, 156, 198, 373, 326});
-  std::vector<float> anchors_float(anchors.begin(), anchors.end());
-  yolo_config_.anchors = anchors_float;
-  auto scale_x_y = declare_parameter("scale_x_y", std::vector<double>{1.0, 1.0, 1.0});
-  std::vector<float> scale_x_y_float(scale_x_y.begin(), scale_x_y.end());
-  yolo_config_.scale_x_y = scale_x_y_float;
-  yolo_config_.score_thresh = declare_parameter("score_thresh", 0.1);
-  yolo_config_.iou_thresh = declare_parameter("iou_thresh", 0.45);
-  yolo_config_.detections_per_im = declare_parameter("detections_per_im", 100);
-  yolo_config_.use_darknet_layer = declare_parameter("use_darknet_layer", true);
-  yolo_config_.ignore_thresh = declare_parameter("ignore_thresh", 0.5);
+  nh_ = getNodeHandle();
+  pnh_ = getPrivateNodeHandle();
+  it_.reset(new image_transport::ImageTransport(pnh_));
+  std::string onnx_file;
+  std::string engine_file;
+  std::string label_file;
+  std::string calib_image_directory;
+  std::string calib_cache_file;
+  std::string mode;
+  pnh_.param<std::string>("onnx_file", onnx_file, "");
+  pnh_.param<std::string>("engine_file", engine_file, "");
+  pnh_.param<std::string>("label_file", label_file, "");
+  pnh_.param<std::string>("calib_image_directory", calib_image_directory, "");
+  pnh_.param<std::string>("calib_cache_file", calib_cache_file, "");
+  pnh_.param<std::string>("mode", mode, "FP32");
+  pnh_.param<int>("num_anchors", yolo_config_.num_anchors, 3);
+  if (!pnh_.getParam("anchors", yolo_config_.anchors)) {
+    NODELET_WARN("Fail to load anchors");
+    yolo_config_.anchors = {10, 13, 16,  30,  33, 23,  30,  61,  62,
+                            45, 59, 119, 116, 90, 156, 198, 373, 326};
+  }
+  if (!pnh_.getParam("scale_x_y", yolo_config_.scale_x_y)) {
+    NODELET_WARN("Fail to load scale_x_y");
+    yolo_config_.scale_x_y = {1.0, 1.0, 1.0};
+  }
+  pnh_.param<float>("score_thresh", yolo_config_.score_thresh, 0.1);
+  pnh_.param<float>("iou_thresh", yolo_config_.iou_thresh, 0.45);
+  pnh_.param<int>("detections_per_im", yolo_config_.detections_per_im, 100);
+  pnh_.param<bool>("use_darknet_layer", yolo_config_.use_darknet_layer, true);
+  pnh_.param<float>("ignore_thresh", yolo_config_.ignore_thresh, 0.5);
 
   if (!readLabelFile(label_file, &labels_)) {
-    RCLCPP_ERROR(this->get_logger(), "Could not find label file");
+    NODELET_ERROR("Could not find label file");
   }
   std::ifstream fs(engine_file);
   const auto calibration_images = getFilePath(calib_image_directory);
   if (fs.is_open()) {
-    RCLCPP_INFO(this->get_logger(), "Found %s", engine_file.c_str());
+    NODELET_INFO("Found %s", engine_file.c_str());
     net_ptr_.reset(new yolo::Net(engine_file, false));
     if (net_ptr_->getMaxBatchSize() != 1) {
-      RCLCPP_INFO(
-        this->get_logger(), "Max batch size %d should be 1. Rebuild engine from file",
-        net_ptr_->getMaxBatchSize());
+      NODELET_INFO(
+        "Max batch size %d should be 1. Rebuild engine from file", net_ptr_->getMaxBatchSize());
       net_ptr_.reset(
         new yolo::Net(onnx_file, mode, 1, yolo_config_, calibration_images, calib_cache_file));
       net_ptr_->save(engine_file);
     }
   } else {
-    RCLCPP_INFO(
-      this->get_logger(), "Could not find %s, try making TensorRT engine from onnx",
-      engine_file.c_str());
+    NODELET_INFO("Could not find %s, try making TensorRT engine from onnx", engine_file.c_str());
     net_ptr_.reset(
       new yolo::Net(onnx_file, mode, 1, yolo_config_, calibration_images, calib_cache_file));
     net_ptr_->save(engine_file);
   }
-  auto timer_callback = std::bind(&TensorrtYoloNodelet::connectCb, this);
-  const auto period_s = 0.1;
-  const auto period_ns =
-    std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::duration<double>(period_s));
-  timer_ = std::make_shared<rclcpp::GenericTimer<decltype(timer_callback)>>(
-    this->get_clock(), period_ns, std::move(timer_callback),
-    this->get_node_base_interface()->get_context());
-  this->get_node_timers_interface()->add_timer(timer_, nullptr);
-
+  image_transport::SubscriberStatusCallback connect_cb =
+    boost::bind(&TensorrtYoloNodelet::connectCb, this);
   std::lock_guard<std::mutex> lock(connect_mutex_);
-
-  objects_pub_ = this->create_publisher<autoware_perception_msgs::msg::DetectedObjectsWithFeature>(
-    "out/objects", 1);
-  image_pub_ = image_transport::create_publisher(this, "out/image");
-
+  objects_pub_ = pnh_.advertise<autoware_perception_msgs::DynamicObjectWithFeatureArray>(
+    "out/objects", 1, boost::bind(&TensorrtYoloNodelet::connectCb, this),
+    boost::bind(&TensorrtYoloNodelet::connectCb, this));
+  image_pub_ = it_->advertise("out/image", 1, connect_cb, connect_cb);
   out_scores_ =
     std::make_unique<float[]>(net_ptr_->getMaxBatchSize() * net_ptr_->getMaxDetections());
   out_boxes_ =
@@ -115,64 +104,54 @@ TensorrtYoloNodelet::TensorrtYoloNodelet(const rclcpp::NodeOptions & options)
 
 void TensorrtYoloNodelet::connectCb()
 {
-  using std::placeholders::_1;
   std::lock_guard<std::mutex> lock(connect_mutex_);
-  if (objects_pub_->get_subscription_count() == 0 && image_pub_.getNumSubscribers() == 0) {
+  if (objects_pub_.getNumSubscribers() == 0 && image_pub_.getNumSubscribers() == 0)
     image_sub_.shutdown();
-  } else if (!image_sub_) {
-    image_sub_ = image_transport::create_subscription(
-      this, "in/image", std::bind(&TensorrtYoloNodelet::callback, this, _1), "raw",
-      rmw_qos_profile_sensor_data);
-  }
+  else if (!image_sub_)
+    image_sub_ = it_->subscribe("in/image", 1, &TensorrtYoloNodelet::callback, this);
 }
 
-void TensorrtYoloNodelet::callback(const sensor_msgs::msg::Image::ConstSharedPtr in_image_msg)
+void TensorrtYoloNodelet::callback(const sensor_msgs::Image::ConstPtr & in_image_msg)
 {
-  using Label = autoware_auto_perception_msgs::msg::ObjectClassification;
-
-  autoware_perception_msgs::msg::DetectedObjectsWithFeature out_objects;
+  autoware_perception_msgs::DynamicObjectWithFeatureArray out_objects;
 
   cv_bridge::CvImagePtr in_image_ptr;
   try {
     in_image_ptr = cv_bridge::toCvCopy(in_image_msg, sensor_msgs::image_encodings::BGR8);
   } catch (cv_bridge::Exception & e) {
-    RCLCPP_ERROR(this->get_logger(), "cv_bridge exception: %s", e.what());
+    NODELET_ERROR("cv_bridge exception: %s", e.what());
     return;
   }
   if (!net_ptr_->detect(
         in_image_ptr->image, out_scores_.get(), out_boxes_.get(), out_classes_.get())) {
-    RCLCPP_WARN(this->get_logger(), "Fail to inference");
+    NODELET_WARN("Fail to inference");
     return;
   }
   const auto width = in_image_ptr->image.cols;
   const auto height = in_image_ptr->image.rows;
   for (int i = 0; i < yolo_config_.detections_per_im; ++i) {
-    if (out_scores_[i] < yolo_config_.ignore_thresh) {
-      break;
-    }
-    autoware_perception_msgs::msg::DetectedObjectWithFeature object;
+    if (out_scores_[i] < yolo_config_.ignore_thresh) break;
+    autoware_perception_msgs::DynamicObjectWithFeature object;
     object.feature.roi.x_offset = out_boxes_[4 * i] * width;
     object.feature.roi.y_offset = out_boxes_[4 * i + 1] * height;
     object.feature.roi.width = out_boxes_[4 * i + 2] * width;
     object.feature.roi.height = out_boxes_[4 * i + 3] * height;
-    object.object.classification.emplace_back(autoware_auto_perception_msgs::build<Label>()
-                                                .label(Label::UNKNOWN)
-                                                .probability(out_scores_[i]));
+    object.object.semantic.confidence = out_scores_[i];
     const auto class_id = static_cast<int>(out_classes_[i]);
     if (labels_[class_id] == "car") {
-      object.object.classification.front().label = Label::CAR;
+      object.object.semantic.type = autoware_perception_msgs::Semantic::CAR;
     } else if (labels_[class_id] == "person") {
-      object.object.classification.front().label = Label::PEDESTRIAN;
+      object.object.semantic.type = autoware_perception_msgs::Semantic::PEDESTRIAN;
     } else if (labels_[class_id] == "bus") {
-      object.object.classification.front().label = Label::BUS;
+      object.object.semantic.type = autoware_perception_msgs::Semantic::BUS;
     } else if (labels_[class_id] == "truck") {
-      object.object.classification.front().label = Label::TRUCK;
+      object.object.semantic.type = autoware_perception_msgs::Semantic::TRUCK;
     } else if (labels_[class_id] == "bicycle") {
-      object.object.classification.front().label = Label::BICYCLE;
+      object.object.semantic.type = autoware_perception_msgs::Semantic::BICYCLE;
     } else if (labels_[class_id] == "motorbike") {
-      object.object.classification.front().label = Label::MOTORCYCLE;
+      object.object.semantic.type = autoware_perception_msgs::Semantic::MOTORBIKE;
     } else {
-      object.object.classification.front().label = Label::UNKNOWN;
+      object.object.semantic.type = autoware_perception_msgs::Semantic::UNKNOWN;
     }
     out_objects.feature_objects.push_back(object);
     const auto left = std::max(0, static_cast<int>(object.feature.roi.x_offset));
@@ -188,7 +167,7 @@ void TensorrtYoloNodelet::callback(const sensor_msgs::msg::Image::ConstSharedPtr
   image_pub_.publish(in_image_ptr->toImageMsg());
 
   out_objects.header = in_image_msg->header;
-  objects_pub_->publish(out_objects);
+  objects_pub_.publish(out_objects);
 }
 
 bool TensorrtYoloNodelet::readLabelFile(
@@ -196,7 +175,7 @@ bool TensorrtYoloNodelet::readLabelFile(
 {
   std::ifstream labelsFile(filepath);
   if (!labelsFile.is_open()) {
-    RCLCPP_ERROR(this->get_logger(), "Could not open label file. [%s]", filepath.c_str());
+    NODELET_ERROR("Could not open label file. [%s]", filepath.c_str());
     return false;
   }
   std::string label;
@@ -208,5 +187,5 @@ bool TensorrtYoloNodelet::readLabelFile(
 
 }  // namespace object_recognition
 
-#include <rclcpp_components/register_node_macro.hpp>
-RCLCPP_COMPONENTS_REGISTER_NODE(object_recognition::TensorrtYoloNodelet)
+#include <pluginlib/class_list_macros.h>
+PLUGINLIB_EXPORT_CLASS(object_recognition::TensorrtYoloNodelet, nodelet::Nodelet)

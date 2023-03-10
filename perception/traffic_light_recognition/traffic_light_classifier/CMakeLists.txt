@@ -1,12 +1,7 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.0.2)
 project(traffic_light_classifier)
 
-if(NOT CMAKE_CXX_STANDARD)
-	set(CMAKE_CXX_STANDARD 14)
-endif()
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic -Wno-deprecated-declarations -Werror)
-endif()
+add_compile_options(-std=c++14)
 
 option(CUDA_VERBOSE "Verbose output of CUDA modules" OFF)
 # set flags for CUDA availability
@@ -108,23 +103,41 @@ else()
   execute_process(COMMAND gdown --quiet "${LAMP_LABEL_LINK}" -O ${PATH}/lamp_labels.txt)
 endif()
 
-find_package(ament_cmake_auto REQUIRED)
-ament_auto_find_build_dependencies()
+find_package(catkin REQUIRED COMPONENTS
+  autoware_perception_msgs
+  cv_bridge
+  roscpp
+  sensor_msgs
+  image_transport
+  message_filters
+  dynamic_reconfigure
+  nodelet
+  )
+
+generate_dynamic_reconfigure_options(cfg/HSVFilter.cfg)
+
 find_package(OpenCV REQUIRED)
-find_package(Boost REQUIRED COMPONENTS filesystem)
 
 if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
   add_definitions(-DENABLE_GPU)
 
   include_directories(
+    include
     utils
     ${OpenCV_INCLUDE_DIRS}
     ${CUDA_INCLUDE_DIRS}
+    ${catkin_INCLUDE_DIRS}
     )
 
-  ament_auto_add_library(libutils SHARED
+  catkin_package(
+    INCLUDE_DIRS include
+    LIBRARIES ${PROJECT_NAME}
+    CATKIN_DEPENDS
+    )
+
+  add_library(libutils
     utils/trt_common.cpp
-  )
+    )
   target_link_libraries(libutils
     ${OpenCV_LIBRARIES}
     ${NVINFER}
@@ -134,51 +147,130 @@ if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
     ${CUBLAS_LIBRARIES}
     ${CUDA_curand_LIBRARY}
     ${CUDNN_LIBRARY}
-    ${Boost_LIBRARIES}
-  )
+    )
+  add_dependencies(libutils
+    ${catkin_EXPORTED_TARGETS})
 
-  ament_auto_add_library(traffic_light_classifier_nodelet SHARED
+  add_library(traffic_light_classifier_nodelet SHARED
     src/color_classifier.cpp
     src/cnn_classifier.cpp
     src/nodelet.cpp
-  )
+    )
+
+  add_dependencies(traffic_light_classifier_nodelet
+    ${${PROJECT_NAME}_EXPORTED_TARGETS}
+    ${catkin_EXPORTED_TARGETS}
+    )
+
   target_link_libraries(traffic_light_classifier_nodelet
     libutils
+    ${catkin_LIBRARIES}
     ${OpenCV_LIBRARIES}
-  )
-  rclcpp_components_register_node(traffic_light_classifier_nodelet
-    PLUGIN "traffic_light::TrafficLightClassifierNodelet"
-    EXECUTABLE traffic_light_classifier_node
-  )
+    )
 
-  ament_auto_package(INSTALL_TO_SHARE
-    data
+  add_executable(traffic_light_classifier_node
+    src/node.cpp
+    )
+
+  add_dependencies(traffic_light_classifier_node
+    ${${PROJECT_NAME}_EXPORTED_TARGETS}
+    ${catkin_EXPORTED_TARGETS}
+    )
+
+  target_link_libraries(traffic_light_classifier_node
+    libutils
+    traffic_light_classifier_nodelet
+    ${catkin_LIBRARIES}
+    ${OpenCV_LIBRARIES}
+    )
+
+  install(
+    TARGETS
+    traffic_light_classifier_node
+    traffic_light_classifier_nodelet
+    libutils
+    ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+    LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+    RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+    )
+
+  install(
+    FILES
+    traffic_light_classifier.xml
+    DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+    )
+
+  install(
+    DIRECTORY
     launch
-  )
+    data
+    DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+    )
 
 else()
   message(STATUS "CUDA and/or TensorRT were not found. build only color classifier")
 
   include_directories(
+    include
     ${OpenCV_INCLUDE_DIRS}
+    ${catkin_INCLUDE_DIRS}
     )
 
-  ament_auto_add_library(traffic_light_classifier_nodelet SHARED
+  catkin_package(
+    INCLUDE_DIRS include
+    LIBRARIES ${PROJECT_NAME}
+    CATKIN_DEPENDS
+    )
+
+  add_library(traffic_light_classifier_nodelet SHARED
     src/color_classifier.cpp
     src/nodelet.cpp
     )
+
+  add_dependencies(traffic_light_classifier_nodelet
+    ${${PROJECT_NAME}_EXPORTED_TARGETS}
+    ${catkin_EXPORTED_TARGETS}
+    )
+
   target_link_libraries(traffic_light_classifier_nodelet
+    ${catkin_LIBRARIES}
     ${OpenCV_LIBRARIES}
     )
 
-  rclcpp_components_register_node(traffic_light_classifier_nodelet
-    PLUGIN "traffic_light::TrafficLightClassifierNodelet"
-    EXECUTABLE traffic_light_classifier_node
-  )
+  add_executable(traffic_light_classifier_node
+    src/node.cpp
+    )
 
-  ament_auto_package(INSTALL_TO_SHARE
-    data
+  add_dependencies(traffic_light_classifier_node
+    ${${PROJECT_NAME}_EXPORTED_TARGETS}
+    ${catkin_EXPORTED_TARGETS}
+    )
+
+  target_link_libraries(traffic_light_classifier_node
+    traffic_light_classifier_nodelet
+    ${catkin_LIBRARIES}
+    ${OpenCV_LIBRARIES}
+    )
+
+  install(
+    TARGETS
+    traffic_light_classifier_node
+    traffic_light_classifier_nodelet
+    ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+    LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+    RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+    )
+
+  install(
+    FILES
+    traffic_light_classifier.xml
+    DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+    )
+
+  install(
+    DIRECTORY
     launch
-  )
+    DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+    )
 
 endif()

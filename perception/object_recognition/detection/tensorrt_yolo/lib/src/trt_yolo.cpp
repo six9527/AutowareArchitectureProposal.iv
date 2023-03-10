@@ -1,16 +1,18 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2020 Tier IV, Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 /*
  * Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
@@ -34,23 +36,20 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include <calibrator.hpp>
-#include <cuda_utils.hpp>
-#include <mish_plugin.hpp>
-#include <nms_plugin.hpp>
-#include <trt_yolo.hpp>
-#include <yolo_layer_plugin.hpp>
-
-#include <NvOnnxParser.h>
-
 #include <algorithm>
 #include <fstream>
 #include <functional>
-#include <memory>
 #include <numeric>
 #include <stdexcept>
-#include <string>
-#include <vector>
+
+#include <NvOnnxParser.h>
+
+#include "calibrator.h"
+#include "cuda_utils.h"
+#include "mish_plugin.hpp"
+#include "nms_plugin.hpp"
+#include "trt_yolo.hpp"
+#include "yolo_layer_plugin.hpp"
 
 namespace yolo
 {
@@ -159,9 +158,7 @@ Net::Net(
     return;
   }
   // Allow use of FP16 layers when running in INT8
-  if (fp16 || int8) {
-    config->setFlag(nvinfer1::BuilderFlag::kFP16);
-  }
+  if (fp16 || int8) config->setFlag(nvinfer1::BuilderFlag::kFP16);
   config->setMaxWorkspaceSize(workspace_size);
 
   // Parse ONNX FCN
@@ -239,17 +236,18 @@ Net::Net(
     nvinfer1::Dims4{max_batch_size, input_channel, input_height, input_width});
   config->addOptimizationProfile(profile);
 
-  std::unique_ptr<yolo::Int8EntropyCalibrator> calib{nullptr};
-  if (int8) {
-    if (calibration_images.size() >= static_cast<size_t>(max_batch_size)) {
-      config->setFlag(nvinfer1::BuilderFlag::kINT8);
-      yolo::ImageStream stream(max_batch_size, input_dims, calibration_images);
-      calib = std::make_unique<yolo::Int8EntropyCalibrator>(stream, calibration_table);
-      config->setInt8Calibrator(calib.get());
-    } else {
-      std::cout << "Fail to find enough images for INT8 calibration. Build FP mode..." << std::endl;
-    }
-  }
+  // TODO: Enable int8 calibrator
+  // std::unique_ptr<yolo::Int8EntropyCalibrator> calib{nullptr};
+  // if (int8) {
+  //   if (calibration_images.size() >= static_cast<size_t>(max_batch_size)) {
+  //     config->setFlag(nvinfer1::BuilderFlag::kINT8);
+  //     yolo::ImageStream stream(max_batch_size, input_dims, calibration_images);
+  //     calib = std::make_unique<yolo::Int8EntropyCalibrator>(stream, calibration_table);
+  //     config->setInt8Calibrator(calib.get());
+  //   } else {
+  //     std::cout << "Fail to find enough images for INT8 calibration. Build FP mode..." << std::endl;
+  //   }
+  // }
 
   // Build engine
   std::cout << "Applying optimizations and building TRT CUDA engine..." << std::endl;

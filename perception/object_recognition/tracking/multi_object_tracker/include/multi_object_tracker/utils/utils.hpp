@@ -1,49 +1,39 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-//
-//
-// Author: v1.0 Yukihiro Saito
-//
+/*
+ * Copyright 2020 Tier IV, Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ *
+ * v1.0 Yukihiro Saito
+ */
 
-#ifndef MULTI_OBJECT_TRACKER__UTILS__UTILS_HPP_
-#define MULTI_OBJECT_TRACKER__UTILS__UTILS_HPP_
-
-#include <autoware_utils/autoware_utils.hpp>
-
-#include <autoware_auto_perception_msgs/msg/detected_object.hpp>
-#include <autoware_auto_perception_msgs/msg/shape.hpp>
-#include <autoware_auto_perception_msgs/msg/tracked_object.hpp>
-#include <geometry_msgs/msg/polygon.hpp>
-#include <geometry_msgs/msg/vector3.hpp>
-
+#pragma once
 #include <cmath>
-#include <vector>
+#include "autoware_perception_msgs/DynamicObject.h"
+#include "autoware_perception_msgs/Shape.h"
+#include "autoware_utils/autoware_utils.h"
+#include "geometry_msgs/Polygon.h"
+#include "geometry_msgs/Vector3.h"
 
 namespace utils
 {
-double getPolygonArea(const geometry_msgs::msg::Polygon & footprint);
-double getRectangleArea(const geometry_msgs::msg::Vector3 & dimensions);
-double getCircleArea(const geometry_msgs::msg::Vector3 & dimensions);
-double getArea(const autoware_auto_perception_msgs::msg::Shape & shape);
+double getPolygonArea(const geometry_msgs::Polygon & footprint);
+double getRectangleArea(const geometry_msgs::Vector3 & dimensions);
+double getCircleArea(const geometry_msgs::Vector3 & dimensions);
+double getArea(const autoware_perception_msgs::Shape & shape);
 double get2dIoU(
-  const autoware_auto_perception_msgs::msg::TrackedObject & object1,
-  const autoware_auto_perception_msgs::msg::TrackedObject & object2);
-std::uint8_t getHighestProbLabel(
-  const std::vector<autoware_auto_perception_msgs::msg::ObjectClassification> & classification);
-autoware_auto_perception_msgs::msg::TrackedObject toTrackedObject(
-  const autoware_auto_perception_msgs::msg::DetectedObject & detected_object);
-
+  const autoware_perception_msgs::DynamicObject & object1,
+  const autoware_perception_msgs::DynamicObject & object2);
 enum MSG_COV_IDX {
   X_X = 0,
   X_Y = 1,
@@ -82,6 +72,5 @@ enum MSG_COV_IDX {
   YAW_PITCH = 34,
   YAW_YAW = 35
 };
-}  // namespace utils
 
-#endif  // MULTI_OBJECT_TRACKER__UTILS__UTILS_HPP_
+}  // namespace utils

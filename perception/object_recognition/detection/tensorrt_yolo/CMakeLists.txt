@@ -1,40 +1,47 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.0.2)
 project(tensorrt_yolo)
 
 if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 17)
-  set(CMAKE_CXX_STANDARD_REQUIRED ON)
-  set(CMAKE_CXX_EXTENSIONS OFF)
+	set(CMAKE_CXX_STANDARD 14)
 endif()
+
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic -Wno-deprecated-declarations -Werror)
+  add_compile_options(-Wall -Wextra -Wpedantic -Wno-unused-parameter)
 endif()
 
 option(CUDA_VERBOSE "Verbose output of CUDA modules" OFF)
 
-find_package(ament_cmake_auto REQUIRED)
-ament_auto_find_build_dependencies()
+find_package(catkin REQUIRED COMPONENTS
+  cv_bridge
+  roscpp
+  image_transport
+  message_filters
+  sensor_msgs
+  std_msgs
+  autoware_perception_msgs
+  nodelet
+)
 
 find_package(OpenCV REQUIRED)
 
 # set flags for CUDA availability
 option(CUDA_AVAIL "CUDA available" OFF)
 find_package(CUDA)
-if(CUDA_FOUND)
+if (CUDA_FOUND)
   find_library(CUBLAS_LIBRARIES cublas HINTS
     ${CUDA_TOOLKIT_ROOT_DIR}/lib64
     ${CUDA_TOOLKIT_ROOT_DIR}/lib
   )
-  if(CUDA_VERBOSE)
+  if (CUDA_VERBOSE)
     message(STATUS "CUDA is available!")
     message(STATUS "CUDA Libs: ${CUDA_LIBRARIES}")
     message(STATUS "CUDA Headers: ${CUDA_INCLUDE_DIRS}")
-  endif()
+  endif ()
   set(CUDA_AVAIL ON)
 else()
   message("CUDA NOT FOUND")
   set(CUDA_AVAIL OFF)
-endif()
+endif (CUDA_FOUND)
 
 # set flags for TensorRT availability
 option(TRT_AVAIL "TensorRT available" OFF)
@@ -43,13 +50,13 @@ find_library(NVINFER NAMES nvinfer)
 find_library(NVONNXPARSER nvonnxparser)
 find_library(NVINFER_PLUGIN NAMES nvinfer_plugin)
 if(NVINFER AND NVONNXPARSER AND NVINFER_PLUGIN)
-  if(CUDA_VERBOSE)
+  if (CUDA_VERBOSE)
     message(STATUS "TensorRT is available!")
     message(STATUS "NVINFER: ${NVINFER}")
     message(STATUS "NVPARSERS: ${NVPARSERS}")
     message(STATUS "NVINFER_PLUGIN: ${NVINFER_PLUGIN}")
     message(STATUS "NVONNXPARSER: ${NVONNXPARSER}")
-  endif()
+  endif ()
   set(TRT_AVAIL ON)
 else()
   message("TensorRT is NOT Available")
@@ -63,13 +70,12 @@ find_library(CUDNN_LIBRARY
 NAMES libcudnn.so${__cudnn_ver_suffix} libcudnn${__cudnn_ver_suffix}.dylib ${__cudnn_lib_win_name}
 PATHS $ENV{LD_LIBRARY_PATH} ${__libpath_cudart} ${CUDNN_ROOT_DIR} ${PC_CUDNN_LIBRARY_DIRS} ${CMAKE_INSTALL_PREFIX}
 PATH_SUFFIXES lib lib64 bin
-DOC "CUDNN library."
-)
+DOC "CUDNN library." )
 if(CUDNN_LIBRARY)
-  if(CUDA_VERBOSE)
+  if (CUDA_VERBOSE)
     message(STATUS "CUDNN is available!")
     message(STATUS "CUDNN_LIBRARY: ${CUDNN_LIBRARY}")
-  endif()
+  endif ()
   set(CUDNN_AVAIL ON)
 else()
   message("CUDNN is NOT Available")
@@ -78,17 +84,17 @@ endif()
 
 # Download onnx
 find_program(GDOWN_AVAIL "gdown")
-if(NOT GDOWN_AVAIL)
+if (NOT GDOWN_AVAIL)
   message("gdown: command not found. External files could not be downloaded.")
 endif()
 set(PATH "${CMAKE_CURRENT_SOURCE_DIR}/data")
-if(NOT EXISTS "${PATH}")
+if (NOT EXISTS "${PATH}")
   execute_process(COMMAND mkdir -p ${PATH})
 endif()
 # yolov3
 set(FILE "${PATH}/yolov3.onnx")
 message(STATUS "Checking and downloading yolov3.onnx")
-if(NOT EXISTS "${FILE}")
+if (NOT EXISTS "${FILE}")
   message(STATUS "... file does not exist. Downloading now ...")
   execute_process(
     COMMAND gdown "https://drive.google.com/uc?id=1ZYoBqVynmO5kKntyN56GEbELRpuXG8Ym" -O ${PATH}/yolov3.onnx
@@ -99,7 +105,7 @@ endif()
 # yolov4
 set(FILE "${PATH}/yolov4.onnx")
 message(STATUS "Checking and downloading yolov4.onnx")
-if(NOT EXISTS "${FILE}")
+if (NOT EXISTS "${FILE}")
   message(STATUS "... file does not exist. Downloading now ...")
   execute_process(
     COMMAND gdown "https://drive.google.com//uc?id=1vkNmSwcIpTkJ_-BrKhxtit0PBJeJYTVX" -O ${PATH}/yolov4.onnx
@@ -107,21 +113,10 @@ if(NOT EXISTS "${FILE}")
   )
 endif()
 
-# yolov4-tiny
-set(FILE "${PATH}/yolov4-tiny.onnx")
-message(STATUS "Checking and downloading yolov4.onnx")
-if(NOT EXISTS "${FILE}")
-  message(STATUS "... file does not exist. Downloading now ...")
-  execute_process(
-    COMMAND gdown "https://drive.google.com/uc?id=1rUHjV_JfkmlVFgb20XXrOMWo_HZAjrFh" -O ${PATH}/yolov4-tiny.onnx
-    ERROR_QUIET
-  )
-endif()
-
 # yolov5s
 set(FILE "${PATH}/yolov5s.onnx")
 message(STATUS "Checking and downloading yolov5s.onnx")
-if(NOT EXISTS "${FILE}")
+if (NOT EXISTS "${FILE}")
   message(STATUS "... file does not exist. Downloading now ...")
   execute_process(
     COMMAND gdown "https://drive.google.com//uc?id=1CF21nQWigwCPTr5psQZXg6cBQIOYKbad" -O ${PATH}/yolov5s.onnx
@@ -132,7 +127,7 @@ endif()
 # yolov5m
 set(FILE "${PATH}/yolov5m.onnx")
 message(STATUS "Checking and downloading yolov5m.onnx")
-if(NOT EXISTS "${FILE}")
+if (NOT EXISTS "${FILE}")
   message(STATUS "... file does not exist. Downloading now ...")
   execute_process(
     COMMAND gdown "https://drive.google.com//uc?id=1a1h50KJH6slwmjKZpPlS-errukF-BrgG" -O ${PATH}/yolov5m.onnx
@@ -143,7 +138,7 @@ endif()
 # yolov5l
 set(FILE "${PATH}/yolov5l.onnx")
 message(STATUS "Checking and downloading yolov5l.onnx")
-if(NOT EXISTS "${FILE}")
+if (NOT EXISTS "${FILE}")
   message(STATUS "... file does not exist. Downloading now ...")
   execute_process(
     COMMAND gdown "https://drive.google.com/uc?id=1xO8S92Cq7qrmx93UHHyA7Cd7-dJsBDP8" -O ${PATH}/yolov5l.onnx
@@ -154,7 +149,7 @@ endif()
 # yolov5x
 set(FILE "${PATH}/yolov5x.onnx")
 message(STATUS "Checking and downloading yolov5x.onnx")
-if(NOT EXISTS "${FILE}")
+if (NOT EXISTS "${FILE}")
   message(STATUS "... file does not exist. Downloading now ...")
   execute_process(
     COMMAND gdown "https://drive.google.com/uc?id=1kAHuNJUCxpD-yWrS6t95H3zbAPfClLxI" -O ${PATH}/yolov5x.onnx
@@ -164,7 +159,7 @@ endif()
 
 set(FILE "${PATH}/coco.names")
 message(STATUS "Checking and downloading coco.names")
-if(NOT EXISTS "${FILE}")
+if (NOT EXISTS "${FILE}")
   message(STATUS "... file does not exist. Downloading now ...")
   execute_process(
     COMMAND gdown "https://drive.google.com/uc?id=19wXD23PE16kJDkZ7j2W3Ijvx5I1kO9kJ" -O ${PATH}/coco.names
@@ -174,7 +169,7 @@ endif()
 
 # create calib image directory for int8 calibration
 set(CALIB_IMAGE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/calib_image")
-if(NOT EXISTS "${CALIB_IMAGE_PATH}")
+if (NOT EXISTS "${CALIB_IMAGE_PATH}")
   execute_process(COMMAND mkdir -p ${CALIB_IMAGE_PATH})
 endif()
 
@@ -182,10 +177,16 @@ if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
   include_directories(
     include
     lib/include
-    ${OpenCV_INCLUDE_DIRS}
+    ${Opencv_INCLUDE_DIRS}
     ${CUDA_INCLUDE_DIRS}
+    ${catkin_INCLUDE_DIRS}
   )
 
+  catkin_package(
+    INCLUDE_DIRS include
+    LIBRARIES ${PROJECT_NAME}
+    CATKIN_DEPENDS
+  )
 
   ### yolo ###
   cuda_add_library(mish_plugin SHARED
@@ -203,12 +204,8 @@ if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
     lib/src/plugins/nms_plugin.cpp
   )
 
-  ament_auto_add_library(yolo SHARED
+  add_library(yolo
     lib/src/trt_yolo.cpp
-  )
-
-  target_include_directories(yolo PUBLIC
-    lib/include
   )
 
   target_link_libraries(yolo
@@ -224,11 +221,16 @@ if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
     nms_plugin
   )
 
-  ament_auto_add_library(tensorrt_yolo_nodelet SHARED
+  add_library(tensorrt_yolo_nodelet SHARED
     src/nodelet.cpp
   )
 
+  add_dependencies(tensorrt_yolo_nodelet
+    ${catkin_EXPORTED_TARGETS}
+  )
+
   target_link_libraries(tensorrt_yolo_nodelet
+    ${catkin_LIBRARIES}
     ${OpenCV_LIBS}
     yolo
     mish_plugin
@@ -236,37 +238,60 @@ if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
     nms_plugin
   )
 
-  rclcpp_components_register_node(tensorrt_yolo_nodelet
-    PLUGIN "object_recognition::TensorrtYoloNodelet"
-    EXECUTABLE tensorrt_yolo_node
+  add_executable(tensorrt_yolo_node
+    src/node.cpp
   )
 
-  if(BUILD_TESTING)
-    find_package(ament_lint_auto REQUIRED)
-    ament_lint_auto_find_test_dependencies()
-  endif()
+  target_link_libraries(tensorrt_yolo_node
+    tensorrt_yolo_nodelet
+    ${catkin_LIBRARIES}
+    ${OpenCV_LIBS}
+    yolo
+    mish_plugin
+    yolo_layer_plugin
+    nms_plugin
+  )
 
-  ament_auto_package(INSTALL_TO_SHARE
-    config
-    data
-    launch
+  add_dependencies(tensorrt_yolo_node
+    ${catkin_EXPORTED_TARGETS}
+  )
+
+  install(TARGETS
+    tensorrt_yolo_node
+    tensorrt_yolo_nodelet
+    yolo
+    mish_plugin
+    yolo_layer_plugin
+    nms_plugin
+    ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+    LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+    RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
   )
 
   install(
-    TARGETS
-      mish_plugin
-      yolo_layer_plugin
-      nms_plugin
-    LIBRARY DESTINATION lib
-    ARCHIVE DESTINATION lib
-    RUNTIME DESTINATION bin
+    FILES
+    tensorrt_yolo.xml
+    DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+  )
+
+  install(
+    DIRECTORY
+      launch
+      data
+      calib_image
+    DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
   )
 
 else()
+  find_package(catkin REQUIRED)
+  catkin_package()
   message("TensorrtYolo won't be built, CUDA and/or TensorRT were not found.")
-  ament_auto_package(INSTALL_TO_SHARE
-    config
-    data
-    launch
+
+  install(
+    DIRECTORY
+      launch
+    DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
   )
+
 endif()
+

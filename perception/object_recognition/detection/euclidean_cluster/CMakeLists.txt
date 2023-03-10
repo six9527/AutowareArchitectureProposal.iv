@@ -1,67 +1,76 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.0.2)
 project(euclidean_cluster)
 
-if(NOT CMAKE_CXX_STANDARD)
-	set(CMAKE_CXX_STANDARD 14)
-endif()
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic)
-endif()
+add_compile_options(-std=c++14 -O3)
 
-find_package(ament_cmake_auto REQUIRED)
-find_package(PCL REQUIRED QUIET COMPONENTS common search filters segmentation)
-ament_auto_find_build_dependencies()
-
-
-include_directories(
-  include
-  ${PCL_COMMON_INCLUDE_DIRS}
-  ${PCL_INCLUDE_DIRS}
+find_package(catkin REQUIRED COMPONENTS
+  pcl_ros
+  roscpp
+  sensor_msgs
+  nodelet
+  pcl_conversions
+  autoware_perception_msgs
 )
 
-ament_auto_add_library(cluster_lib SHARED
-  lib/utils.cpp
-  lib/euclidean_cluster.cpp
-  lib/voxel_grid_based_euclidean_cluster.cpp
+catkin_package(
+  INCLUDE_DIRS
+    include
+  LIBRARIES
+    euclidean_cluster
+  CATKIN_DEPENDS
+    pcl_ros
+    roscpp
+    sensor_msgs
+    nodelet
+    pcl_conversions
+    autoware_perception_msgs
 )
 
-target_link_libraries(cluster_lib
-  ${PCL_LIBRARIES}
+include_directories(include ${catkin_INCLUDE_DIRS})
+
+add_library(euclidean_cluster src/euclidean_cluster_nodelet.cpp
+  src/voxel_grid_based_euclidean_cluster_nodelet.cpp)
+target_link_libraries(euclidean_cluster ${catkin_LIBRARIES})
+add_dependencies(euclidean_cluster ${catkin_EXPORTED_TARGETS})
+
+add_executable(euclidean_cluster_node src/euclidean_cluster_node.cpp)
+target_link_libraries(euclidean_cluster_node
+  euclidean_cluster
+  ${catkin_LIBRARIES}
+)
+add_dependencies(euclidean_cluster_node ${catkin_EXPORTED_TARGETS})
+add_executable(voxel_grid_based_euclidean_cluster_node
+  src/voxel_grid_based_euclidean_cluster_node.cpp)
+target_link_libraries(voxel_grid_based_euclidean_cluster_node
+  euclidean_cluster
+  ${catkin_LIBRARIES}
+)
+add_dependencies(voxel_grid_based_euclidean_cluster_node
+  ${catkin_EXPORTED_TARGETS})
+
+install(
+  TARGETS
+    euclidean_cluster_node
+    voxel_grid_based_euclidean_cluster_node
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
-target_include_directories(cluster_lib
-  PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include>
+install(
+  TARGETS
+    euclidean_cluster
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)    
+
+install(FILES nodelets.xml
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )
 
-ament_auto_add_library(euclidean_cluster_node_core SHARED
-  src/euclidean_cluster_node.cpp
-)
-target_link_libraries(euclidean_cluster_node_core
-  ${PCL_LIBRARIES}
-  cluster_lib
-)
-
-rclcpp_components_register_node(euclidean_cluster_node_core
-  PLUGIN "euclidean_cluster::EuclideanClusterNode"
-  EXECUTABLE euclidean_cluster_node
-)
-
-ament_auto_add_library(voxel_grid_based_euclidean_cluster_node_core SHARED
-  src/voxel_grid_based_euclidean_cluster_node.cpp
-)
-target_link_libraries(voxel_grid_based_euclidean_cluster_node_core
-  ${PCL_LIBRARIES}
-  cluster_lib
-)
-
-rclcpp_components_register_node(voxel_grid_based_euclidean_cluster_node_core
-  PLUGIN "euclidean_cluster::VoxelGridBasedEuclideanClusterNode"
-  EXECUTABLE voxel_grid_based_euclidean_cluster_node
-)
-
-ament_auto_package(INSTALL_TO_SHARE
+install(
+  DIRECTORY
     launch
-    config
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )

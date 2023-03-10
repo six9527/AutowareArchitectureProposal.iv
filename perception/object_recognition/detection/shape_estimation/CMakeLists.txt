@@ -1,78 +1,78 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.0.2)
 project(shape_estimation)
 
-if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 14)
-  set(CMAKE_CXX_STANDARD_REQUIRED ON)
-  set(CMAKE_CXX_EXTENSIONS OFF)
-endif()
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic -Werror)
-endif()
+add_compile_options(-std=c++14 -O3)
 
-find_package(ament_cmake_auto REQUIRED)
-ament_auto_find_build_dependencies()
-
-find_package(PCL REQUIRED COMPONENTS common)
-find_package(pcl_conversions REQUIRED)
+find_package(catkin REQUIRED COMPONENTS
+  autoware_perception_msgs
+  pcl_ros
+  roscpp
+  tf2
+  tf2_geometry_msgs
+  rostest
+  rosunit
+  eigen_conversions
+)
 
 find_package(OpenCV REQUIRED)
 find_package(Eigen3 REQUIRED)
 
-
-set(SHAPE_ESTIMATION_DEPENDENCIES
-  PCL
-  OpenCV
-  Eigen3
+catkin_package(
+  INCLUDE_DIRS
+    include
+  CATKIN_DEPENDS
+    autoware_perception_msgs
+    pcl_ros
+    roscpp
+    tf2
+    tf2_geometry_msgs
+    eigen_conversions
 )
 
-ament_auto_add_library(shape_estimation_lib SHARED
-  lib/shape_estimator.cpp
-  lib/model/bounding_box.cpp
-  lib/model/convex_hull.cpp
-  lib/model/cylinder.cpp
-  lib/filter/car_filter.cpp
-  lib/filter/bus_filter.cpp
-  lib/filter/truck_filter.cpp
-  lib/filter/no_filter.cpp
-  lib/filter/utils.cpp
-  lib/corrector/car_corrector.cpp
-  lib/corrector/bus_corrector.cpp
-  lib/corrector/truck_corrector.cpp
-  lib/corrector/no_corrector.cpp
-  lib/corrector/utils.cpp
+include_directories(include
+  ${catkin_INCLUDE_DIRS}
+  ${OpenCV_INCLUDE_DIRS}
+  ${EIGEN3_INCLUDE_DIR}
 )
-
-ament_target_dependencies(shape_estimation_lib ${SHAPE_ESTIMATION_DEPENDENCIES})
-
-ament_auto_add_library(shape_estimation_node SHARED
+add_executable(shape_estimation
+  src/main.cpp
   src/node.cpp
+  src/shape_estimator.cpp
+  src/model/normal/bounding_box.cpp
+  src/model/normal/convex_hull.cpp
+  src/model/normal/cylinder.cpp
+  src/model/yaw_fixed/bounding_box.cpp
+  src/filter/car_filter.cpp
+  src/filter/bus_filter.cpp
+  src/filter/truck_filter.cpp
+  src/filter/no_filter.cpp
+  src/corrector/normal/car_corrector.cpp
+  src/corrector/normal/bus_corrector.cpp
+  src/corrector/normal/truck_corrector.cpp
+  src/corrector/normal/no_corrector.cpp
+  src/corrector/yaw_fixed/car_corrector.cpp
+  src/corrector/yaw_fixed/bus_corrector.cpp
+  src/corrector/yaw_fixed/truck_corrector.cpp
+  src/corrector/yaw_fixed/no_corrector.cpp
 )
 
-target_include_directories(shape_estimation_node
-    PUBLIC
-        $<INSTALL_INTERFACE:include>
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/src
+add_dependencies(shape_estimation
+  ${${PROJECT_NAME}_EXPORTED_TARGETS}
+  ${catkin_EXPORTED_TARGETS}
 )
 
-ament_target_dependencies(shape_estimation_node ${SHAPE_ESTIMATION_DEPENDENCIES})
-
-target_link_libraries(shape_estimation_node
-  shape_estimation_lib
+target_link_libraries(shape_estimation
+  ${catkin_LIBRARIES}
+  ${OpenCV_LIBS}
+)
+install(TARGETS shape_estimation
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
-rclcpp_components_register_node(shape_estimation_node
-  PLUGIN "ShapeEstimationNode"
-  EXECUTABLE shape_estimation
-)
-
-if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  ament_lint_auto_find_test_dependencies()
-endif()
-
-ament_auto_package(INSTALL_TO_SHARE
-  launch
+install(
+  DIRECTORY
+    launch
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )

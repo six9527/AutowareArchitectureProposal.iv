@@ -1,58 +1,34 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2020 Tier IV, Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 #include "traffic_light_classifier/color_classifier.hpp"
 
 #include <opencv2/imgproc/imgproc_c.h>
 
-#include <algorithm>
-#include <string>
-#include <vector>
-
 namespace traffic_light
 {
-ColorClassifier::ColorClassifier(rclcpp::Node * node_ptr) : node_ptr_(node_ptr)
+ColorClassifier::ColorClassifier(const ros::NodeHandle & nh, const ros::NodeHandle & pnh)
+: nh_(nh), pnh_(pnh), image_transport_(pnh), ratio_threshold_(0.02)
 {
-  using std::placeholders::_1;
-  image_pub_ = image_transport::create_publisher(
-    node_ptr_, "~/debug/image", rclcpp::QoS{1}.get_rmw_qos_profile());
-
-  hsv_config_.green_min_h = node_ptr_->declare_parameter("green_min_h", 50);
-  hsv_config_.green_min_s = node_ptr_->declare_parameter("green_min_s", 100);
-  hsv_config_.green_min_v = node_ptr_->declare_parameter("green_min_v", 150);
-  hsv_config_.green_max_h = node_ptr_->declare_parameter("green_max_h", 120);
-  hsv_config_.green_max_s = node_ptr_->declare_parameter("green_max_s", 200);
-  hsv_config_.green_max_v = node_ptr_->declare_parameter("green_max_v", 255);
-  hsv_config_.yellow_min_h = node_ptr_->declare_parameter("yellow_min_h", 0);
-  hsv_config_.yellow_min_s = node_ptr_->declare_parameter("yellow_min_s", 80);
-  hsv_config_.yellow_min_v = node_ptr_->declare_parameter("yellow_min_v", 150);
-  hsv_config_.yellow_max_h = node_ptr_->declare_parameter("yellow_max_h", 50);
-  hsv_config_.yellow_max_s = node_ptr_->declare_parameter("yellow_max_s", 200);
-  hsv_config_.yellow_max_v = node_ptr_->declare_parameter("yellow_max_v", 255);
-  hsv_config_.red_min_h = node_ptr_->declare_parameter("red_min_h", 160);
-  hsv_config_.red_min_s = node_ptr_->declare_parameter("red_min_s", 100);
-  hsv_config_.red_min_v = node_ptr_->declare_parameter("red_min_v", 150);
-  hsv_config_.red_max_h = node_ptr_->declare_parameter("red_max_h", 180);
-  hsv_config_.red_max_s = node_ptr_->declare_parameter("red_max_s", 255);
-  hsv_config_.red_max_v = node_ptr_->declare_parameter("red_max_v", 255);
-
-  // set parameter callback
-  set_param_res_ = node_ptr_->add_on_set_parameters_callback(
-    std::bind(&ColorClassifier::parametersCallback, this, _1));
+  image_transport_ = image_transport::ImageTransport(pnh_);
+  image_pub_ = image_transport_.advertise("debug/image", 1);
+  dynamic_reconfigure_.setCallback(boost::bind(&ColorClassifier::parametersCallback, this, _1, _2));
 }
 
-bool ColorClassifier::getTrafficSignal(
-  const cv::Mat & input_image, autoware_auto_perception_msgs::msg::TrafficSignal & traffic_signal)
+bool ColorClassifier::getLampState(
+  const cv::Mat & input_image, std::vector<autoware_perception_msgs::LampState> & states)
 {
   cv::Mat green_image;
   cv::Mat yellow_image;
@@ -136,8 +112,8 @@ bool ColorClassifier::getTrafficSignal(
     cv::putText(
       debug_image, "red", cv::Point(0, height * 3.5), cv::FONT_HERSHEY_SIMPLEX, 1.0,
       cv::Scalar(255, 255, 255), 1, CV_AA);
-    const auto debug_image_msg =
-      cv_bridge::CvImage(std_msgs::msg::Header(), "bgr8", debug_image).toImageMsg();
+    sensor_msgs::ImagePtr debug_image_msg =
+      cv_bridge::CvImage(std_msgs::Header(), "bgr8", debug_image).toImageMsg();
     image_pub_.publish(debug_image_msg);
   }
 #endif
@@ -147,35 +123,34 @@ bool ColorClassifier::getTrafficSignal(
   const int yellow_pixel_num = cv::countNonZero(yellow_filtered_bin_image);
   const int red_pixel_num = cv::countNonZero(red_filtered_bin_image);
   const double green_ratio =
-    static_cast<double>(green_pixel_num) /
-    static_cast<double>(green_filtered_bin_image.rows * green_filtered_bin_image.cols);
+    (double)green_pixel_num /
+    (double)(green_filtered_bin_image.rows * green_filtered_bin_image.cols);
   const double yellow_ratio =
-    static_cast<double>(yellow_pixel_num) /
-    static_cast<double>(yellow_filtered_bin_image.rows * yellow_filtered_bin_image.cols);
+    (double)yellow_pixel_num /
+    (double)(yellow_filtered_bin_image.rows * yellow_filtered_bin_image.cols);
   const double red_ratio =
-    static_cast<double>(red_pixel_num) /
-    static_cast<double>(red_filtered_bin_image.rows * red_filtered_bin_image.cols);
+    (double)red_pixel_num / (double)(red_filtered_bin_image.rows * red_filtered_bin_image.cols);
 
   if (yellow_ratio < green_ratio && red_ratio < green_ratio) {
-    autoware_auto_perception_msgs::msg::TrafficLight light;
-    light.color = autoware_auto_perception_msgs::msg::TrafficLight::GREEN;
-    light.confidence = std::min(1.0, static_cast<double>(green_pixel_num) / (20.0 * 20.0));
-    traffic_signal.lights.push_back(light);
+    autoware_perception_msgs::LampState state;
+    state.type = autoware_perception_msgs::LampState::GREEN;
+    state.confidence = std::min(1.0, double(green_pixel_num) / (20.0 * 20.0));
+    states.push_back(state);
   } else if (green_ratio < yellow_ratio && red_ratio < yellow_ratio) {
-    autoware_auto_perception_msgs::msg::TrafficLight light;
-    light.color = autoware_auto_perception_msgs::msg::TrafficLight::AMBER;
-    light.confidence = std::min(1.0, static_cast<double>(yellow_pixel_num) / (20.0 * 20.0));
-    traffic_signal.lights.push_back(light);
+    autoware_perception_msgs::LampState state;
+    state.type = autoware_perception_msgs::LampState::YELLOW;
+    state.confidence = std::min(1.0, double(yellow_pixel_num) / (20.0 * 20.0));
+    states.push_back(state);
   } else if (green_ratio < red_ratio && yellow_ratio < red_ratio) {
-    autoware_auto_perception_msgs::msg::TrafficLight light;
-    light.color = ::autoware_auto_perception_msgs::msg::TrafficLight::RED;
-    light.confidence = std::min(1.0, static_cast<double>(red_pixel_num) / (20.0 * 20.0));
-    traffic_signal.lights.push_back(light);
+    autoware_perception_msgs::LampState state;
+    state.type = autoware_perception_msgs::LampState::RED;
+    state.confidence = std::min(1.0, double(red_pixel_num) / (20.0 * 20.0));
+    states.push_back(state);
   } else {
-    autoware_auto_perception_msgs::msg::TrafficLight light;
-    light.color = ::autoware_auto_perception_msgs::msg::TrafficLight::UNKNOWN;
-    light.confidence = 0.0;
-    traffic_signal.lights.push_back(light);
+    autoware_perception_msgs::LampState state;
+    state.type = autoware_perception_msgs::LampState::UNKNOWN;
+    state.confidence = 0.0;
+    states.push_back(state);
   }
   return true;
 }
@@ -190,59 +165,20 @@ bool ColorClassifier::filterHSV(
     cv::inRange(hsv_image, min_hsv_yellow_, max_hsv_yellow_, yellow_image);
     cv::inRange(hsv_image, min_hsv_red_, max_hsv_red_, red_image);
   } catch (cv::Exception & e) {
-    RCLCPP_ERROR(node_ptr_->get_logger(), "failed to filter image by hsv value : %s", e.what());
+    ROS_ERROR("failed to filter image by hsv value : %s", e.what());
     return false;
   }
   return true;
 }
-rcl_interfaces::msg::SetParametersResult ColorClassifier::parametersCallback(
-  const std::vector<rclcpp::Parameter> & parameters)
+void ColorClassifier::parametersCallback(
+  traffic_light_classifier::HSVFilterConfig & config, uint32_t level)
 {
-  auto update_param = [&](const std::string & name, int & v) {
-    auto it = std::find_if(
-      parameters.cbegin(), parameters.cend(),
-      [&name](const rclcpp::Parameter & parameter) { return parameter.get_name() == name; });
-    if (it != parameters.cend()) {
-      v = it->as_int();
-      return true;
-    }
-    return false;
-  };
-
-  update_param("green_min_h", hsv_config_.green_min_h);
-  update_param("green_min_s", hsv_config_.green_min_s);
-  update_param("green_min_v", hsv_config_.green_min_v);
-  update_param("green_max_h", hsv_config_.green_max_h);
-  update_param("green_max_s", hsv_config_.green_max_s);
-  update_param("green_max_v", hsv_config_.green_max_v);
-  update_param("yellow_min_h", hsv_config_.yellow_min_h);
-  update_param("yellow_min_s", hsv_config_.yellow_min_s);
-  update_param("yellow_min_v", hsv_config_.yellow_min_v);
-  update_param("yellow_max_h", hsv_config_.yellow_max_h);
-  update_param("yellow_max_s", hsv_config_.yellow_max_s);
-  update_param("yellow_max_v", hsv_config_.yellow_max_v);
-  update_param("red_min_h", hsv_config_.red_min_h);
-  update_param("red_min_s", hsv_config_.red_min_s);
-  update_param("red_min_v", hsv_config_.red_min_v);
-  update_param("red_max_h", hsv_config_.red_max_h);
-  update_param("red_max_s", hsv_config_.red_max_s);
-  update_param("red_max_v", hsv_config_.red_max_v);
-
-  min_hsv_green_ =
-    cv::Scalar(hsv_config_.green_min_h, hsv_config_.green_min_s, hsv_config_.green_min_v);
-  max_hsv_green_ =
-    cv::Scalar(hsv_config_.green_max_h, hsv_config_.green_max_s, hsv_config_.green_max_v);
-  min_hsv_yellow_ =
-    cv::Scalar(hsv_config_.yellow_min_h, hsv_config_.yellow_min_s, hsv_config_.yellow_min_v);
-  max_hsv_yellow_ =
-    cv::Scalar(hsv_config_.yellow_max_h, hsv_config_.yellow_max_s, hsv_config_.yellow_max_v);
-  min_hsv_red_ = cv::Scalar(hsv_config_.red_min_h, hsv_config_.red_min_s, hsv_config_.red_min_v);
-  max_hsv_red_ = cv::Scalar(hsv_config_.red_max_h, hsv_config_.red_max_s, hsv_config_.red_max_v);
-
-  rcl_interfaces::msg::SetParametersResult result;
-  result.successful = true;
-  result.reason = "success";
-  return result;
+  min_hsv_green_ = cv::Scalar(config.green_min_h, config.green_min_s, config.green_min_v);
+  max_hsv_green_ = cv::Scalar(config.green_max_h, config.green_max_s, config.green_max_v);
+  min_hsv_yellow_ = cv::Scalar(config.yellow_min_h, config.yellow_min_s, config.yellow_min_v);
+  max_hsv_yellow_ = cv::Scalar(config.yellow_max_h, config.yellow_max_s, config.yellow_max_v);
+  min_hsv_red_ = cv::Scalar(config.red_min_h, config.red_min_s, config.red_min_v);
+  max_hsv_red_ = cv::Scalar(config.red_max_h, config.red_max_s, config.red_max_v);
 }
 
 }  // namespace traffic_light

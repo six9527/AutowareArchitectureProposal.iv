@@ -1,9 +1,8 @@
+
 ### Note
-
 This library is customized.
-Original repository : <https://github.com/lewes6369/tensorRTWrapper>
-
-```txt
+Original repository : https://github.com/lewes6369/tensorRTWrapper
+```
 MIT License
 
 Copyright (c) 2018 lewes6369

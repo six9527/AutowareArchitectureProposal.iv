@@ -1,20 +1,21 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.0.2)
 
-if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 14)
-  set(CMAKE_CXX_STANDARD_REQUIRED ON)
-  set(CMAKE_CXX_EXTENSIONS OFF)
-endif()
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic -Werror)
-endif()
+add_compile_options(-std=c++14)
 
 project(traffic_light_ssd_fine_detector)
 
 option(CUDA_VERBOSE "Verbose output of CUDA modules" OFF)
 
-find_package(ament_cmake_auto REQUIRED)
-ament_auto_find_build_dependencies()
+find_package(catkin REQUIRED COMPONENTS
+  cv_bridge
+  roscpp
+  image_transport
+  message_filters
+  sensor_msgs
+  std_msgs
+  autoware_perception_msgs
+  nodelet
+)
 
 find_package(OpenCV REQUIRED)
 
@@ -119,14 +120,22 @@ endif()
 
 if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
   include_directories(
-    ${OpenCV_INCLUDE_DIRS}
+    include
+    ${Opencv_INCLUDE_DIRS}
     ${CUDA_INCLUDE_DIRS}
+    ${catkin_INCLUDE_DIRS}
+  )
+
+  catkin_package(
+    INCLUDE_DIRS include
+    LIBRARIES ${PROJECT_NAME}
+    CATKIN_DEPENDS
   )
 
   set(CMAKE_CXX_FLAGS "-O2 -Wall -Wunused-variable ${CMAKE_CXX_FLAGS} -fpic -std=c++11 -pthread")
 
   ### ssd ###
-  ament_auto_add_library(ssd SHARED
+  add_library(ssd
     lib/src/trt_ssd.cpp
   )
 
@@ -144,25 +153,67 @@ if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
     ${CUDNN_LIBRARY}
   )
 
-  ament_auto_add_library(traffic_light_ssd_fine_detector_nodelet SHARED
+  add_library(traffic_light_ssd_fine_detector_nodelet SHARED
     src/nodelet.cpp
   )
 
+  add_dependencies(traffic_light_ssd_fine_detector_nodelet
+    ${catkin_EXPORTED_TARGETS}
+  )
+
   target_link_libraries(traffic_light_ssd_fine_detector_nodelet
-    ${OpenCV_LIB}
+    ${catkin_LIBRARIES}
+    ${OpenCV_LIBS}
     ssd
   )
 
-  rclcpp_components_register_node(traffic_light_ssd_fine_detector_nodelet
-    PLUGIN "traffic_light::TrafficLightSSDFineDetectorNodelet"
-    EXECUTABLE traffic_light_ssd_fine_detector_node
+  add_executable(traffic_light_ssd_fine_detector_node
+    src/node.cpp
   )
 
-  ament_auto_package(INSTALL_TO_SHARE
-    data
-    launch
+  target_link_libraries(traffic_light_ssd_fine_detector_node
+    traffic_light_ssd_fine_detector_nodelet
+    ${catkin_LIBRARIES}
+    ${OpenCV_LIBS}
+    ssd
+  )
+
+  add_dependencies(traffic_light_ssd_fine_detector_node
+    ${catkin_EXPORTED_TARGETS}
+  )
+
+  install(TARGETS
+    traffic_light_ssd_fine_detector_node
+    traffic_light_ssd_fine_detector_nodelet
+    ssd
+    ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+    LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+    RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+  )
+
+  install(
+    FILES
+    traffic_light_ssd_fine_detector.xml
+    DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+  )
+
+  install(
+    DIRECTORY
+      launch
+      data
+    DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
   )
 
 else()
+  find_package(catkin REQUIRED)
+  catkin_package()
   message(STATUS "TrafficLightSSDFineDetector won't be built, CUDA and/or TensorRT were not found.")
+
+  install(
+    DIRECTORY
+      launch
+    DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+  )
+
 endif()
+

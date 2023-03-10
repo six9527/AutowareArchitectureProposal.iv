@@ -1,18 +1,18 @@
 /*
  * MIT License
- *
+ * 
  * Copyright (c) 2018 lewes6369
- *
+ * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- *
+ * 
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- *
+ * 
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -20,24 +20,21 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- */
-
-#include <TrtNet.hpp>
-
+*/
+#include "TrtNet.h"
 #include <cublas_v2.h>
 #include <cudnn.h>
 #include <string.h>
 #include <time.h>
-
 #include <cassert>
 #include <chrono>
 #include <iostream>
 #include <sstream>
 #include <unordered_map>
 
-using namespace nvinfer1;        // NOLINT
-using namespace nvcaffeparser1;  // NOLINT
-using namespace plugin;          // NOLINT
+using namespace nvinfer1;
+using namespace nvcaffeparser1;
+using namespace plugin;
 
 static Tn::Logger gLogger;
 
@@ -68,10 +65,9 @@ inline unsigned int getElementSize(nvinfer1::DataType t)
       return 2;
     case nvinfer1::DataType::kINT8:
       return 1;
-    default:
-      throw std::runtime_error("Invalid DataType.");
-      return 0;
   }
+  throw std::runtime_error("Invalid DataType.");
+  return 0;
 }
 
 namespace Tn
@@ -83,7 +79,7 @@ trtNet::trtNet(const std::string & engineFile)
   mTrtRunMode(RUN_MODE::FLOAT32),
   mTrtInputCount(0)
 {
-  using namespace std;  // NOLINT
+  using namespace std;
   fstream file;
 
   file.open(engineFile, ios::binary | ios::in);
@@ -123,15 +119,14 @@ void trtNet::InitEngine()
     int64_t totalSize = volume(dims) * maxBatchSize * getElementSize(dtype);
     mTrtBindBufferSize[i] = totalSize;
     mTrtCudaBuffer[i] = safeCudaMalloc(totalSize);
-    if (mTrtEngine->bindingIsInput(i)) {
-      mTrtInputCount++;
-    }
+    if (mTrtEngine->bindingIsInput(i)) mTrtInputCount++;
   }
 
   CUDA_CHECK(cudaStreamCreate(&mTrtCudaStream));
 }
 
 void trtNet::doInference(const void * inputData, void * outputData)
+
 {
   static const int batchSize = 1;
   assert(mTrtInputCount == 1);

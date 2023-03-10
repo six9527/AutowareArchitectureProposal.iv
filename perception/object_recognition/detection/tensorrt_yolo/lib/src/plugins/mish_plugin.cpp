@@ -1,16 +1,18 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2020 Tier IV, Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 /*
  * MIT License
@@ -36,38 +38,25 @@
  * SOFTWARE.
  */
 
-#include <mish.hpp>
-#include <mish_plugin.hpp>
-
 #include <stdio.h>
-
 #include <cassert>
 #include <cmath>
 #include <iostream>
-#include <vector>
 
-using nvinfer1::DataType;
-using nvinfer1::Dims;
-using nvinfer1::DimsExprs;
-using nvinfer1::DynamicPluginTensorDesc;
-using nvinfer1::IExprBuilder;
-using nvinfer1::IPluginV2DynamicExt;
-using nvinfer1::PluginField;
-using nvinfer1::PluginFieldCollection;
-using nvinfer1::PluginFormat;
-using nvinfer1::PluginTensorDesc;
+#include "mish.h"
+#include "mish_plugin.hpp"
+
+using namespace nvinfer1;
 
 namespace
 {
 const char * MISH_PLUGIN_VERSION{"1"};
 const char * MISH_PLUGIN_NAME{"Mish_TRT"};
 
-inline int64_t volume(const Dims & d)
+inline int64_t volume(const nvinfer1::Dims & d)
 {
   int64_t v = 1;
-  for (int64_t i = 0; i < d.nbDims; i++) {
-    v *= d.d[i];
-  }
+  for (int64_t i = 0; i < d.nbDims; i++) v *= d.d[i];
   return v;
 }
 }  // namespace
@@ -77,53 +66,44 @@ namespace yolo
 MishPlugin::MishPlugin() {}
 
 // create the plugin at runtime from a byte stream
-MishPlugin::MishPlugin(const void * data, size_t length)
-{
-  (void)data;
-  (void)length;
-}
+MishPlugin::MishPlugin(const void * data, size_t length) {}
 
 // IPluginV2 Methods
 
-const char * MishPlugin::getPluginType() const noexcept { return MISH_PLUGIN_NAME; }
+const char * MishPlugin::getPluginType() const { return MISH_PLUGIN_NAME; }
 
-const char * MishPlugin::getPluginVersion() const noexcept { return MISH_PLUGIN_VERSION; }
+const char * MishPlugin::getPluginVersion() const { return MISH_PLUGIN_VERSION; }
 
-int MishPlugin::getNbOutputs() const noexcept { return 1; }
+int MishPlugin::getNbOutputs() const { return 1; }
 
-int MishPlugin::initialize() noexcept { return 0; }
+int MishPlugin::initialize() { return 0; }
 
-void MishPlugin::terminate() noexcept {}
+void MishPlugin::terminate() {}
 
-size_t MishPlugin::getSerializationSize() const noexcept { return 0; }
+size_t MishPlugin::getSerializationSize() const { return 0; }
 
-void MishPlugin::serialize(void * buffer) const noexcept { (void)buffer; }
+void MishPlugin::serialize(void * buffer) const {}
 
-void MishPlugin::destroy() noexcept { delete this; }
+void MishPlugin::destroy() { delete this; }
 
-void MishPlugin::setPluginNamespace(const char * pluginNamespace) noexcept
+void MishPlugin::setPluginNamespace(const char * pluginNamespace)
 {
   mPluginNamespace = pluginNamespace;
 }
 
-const char * MishPlugin::getPluginNamespace() const noexcept { return mPluginNamespace; }
+const char * MishPlugin::getPluginNamespace() const { return mPluginNamespace; }
 
 // IPluginV2Ext Methods
 
-DataType MishPlugin::getOutputDataType(
-  int index, const DataType * inputTypes, int nbInputs) const noexcept
+DataType MishPlugin::getOutputDataType(int index, const DataType * inputTypes, int nbInputs) const
 {
-  (void)index;
-  (void)inputTypes;
-  (void)nbInputs;
-
   assert(inputTypes[0] == DataType::kFLOAT);
   return inputTypes[0];
 }
 
 // IPluginV2DynamicExt Methods
 
-IPluginV2DynamicExt * MishPlugin::clone() const noexcept
+IPluginV2DynamicExt * MishPlugin::clone() const
 {
   auto plugin = new MishPlugin(*this);
   plugin->setPluginNamespace(mPluginNamespace);
@@ -131,58 +111,36 @@ IPluginV2DynamicExt * MishPlugin::clone() const noexcept
 }
 
 DimsExprs MishPlugin::getOutputDimensions(
-  int outputIndex, const DimsExprs * inputs, int nbInputs, IExprBuilder & exprBuilder) noexcept
+  int outputIndex, const DimsExprs * inputs, int nbInputs, IExprBuilder & exprBuilder)
 {
-  (void)outputIndex;
-  (void)nbInputs;
-  (void)exprBuilder;
-
   return inputs[0];
 }
 
 bool MishPlugin::supportsFormatCombination(
-  int pos, const PluginTensorDesc * inOut, int nbInputs, int nbOutputs) noexcept
+  int pos, const nvinfer1::PluginTensorDesc * inOut, int nbInputs, int nbOutputs)
 {
-  (void)nbInputs;
-  (void)nbOutputs;
-
   return inOut[pos].type == DataType::kFLOAT && inOut[pos].format == PluginFormat::kLINEAR;
 }
 
 void MishPlugin::configurePlugin(
   const DynamicPluginTensorDesc * in, int nbInput, const DynamicPluginTensorDesc * out,
-  int nbOutput) noexcept
+  int nbOutput)
 {
-  (void)in;
-  (void)nbInput;
-  (void)out;
-  (void)nbOutput;
-
   assert(nbInput == 1);
   assert(nbOutput == 1);
 }
 
 size_t MishPlugin::getWorkspaceSize(
-  const PluginTensorDesc * inputs, int nbInputs, const PluginTensorDesc * outputs,
-  int nbOutputs) const noexcept
+  const nvinfer1::PluginTensorDesc * inputs, int nbInputs,
+  const nvinfer1::PluginTensorDesc * outputs, int nbOutputs) const
 {
-  (void)inputs;
-  (void)nbInputs;
-  (void)outputs;
-  (void)nbOutputs;
-
   return 0;
 }
 
 int MishPlugin::enqueue(
-  const PluginTensorDesc * inputDesc, const PluginTensorDesc * outputDesc,
-  const void * const * inputs, void * const * outputs, void * workspace,
-  cudaStream_t stream) noexcept
+  const nvinfer1::PluginTensorDesc * inputDesc, const nvinfer1::PluginTensorDesc * outputDesc,
+  const void * const * inputs, void * const * outputs, void * workspace, cudaStream_t stream)
 {
-  (void)inputDesc;
-  (void)outputDesc;
-  (void)workspace;
-
   const int input_volume = volume(inputDesc[0].dims);
 
   int status = -1;
@@ -204,28 +162,23 @@ MishPluginCreator::MishPluginCreator()
   mFC.fields = mPluginAttributes.data();
 }
 
-const char * MishPluginCreator::getPluginName() const noexcept { return MISH_PLUGIN_NAME; }
+const char * MishPluginCreator::getPluginName() const { return MISH_PLUGIN_NAME; }
 
-const char * MishPluginCreator::getPluginVersion() const noexcept { return MISH_PLUGIN_VERSION; }
+const char * MishPluginCreator::getPluginVersion() const { return MISH_PLUGIN_VERSION; }
 
-const PluginFieldCollection * MishPluginCreator::getFieldNames() noexcept { return &mFC; }
+const PluginFieldCollection * MishPluginCreator::getFieldNames() { return &mFC; }
 
 IPluginV2DynamicExt * MishPluginCreator::createPlugin(
-  const char * name, const PluginFieldCollection * fc) noexcept
+  const char * name, const PluginFieldCollection * fc)
 {
-  (void)name;
-  (void)fc;
-
   MishPlugin * obj = new MishPlugin();
   obj->setPluginNamespace(mNamespace.c_str());
   return obj;
 }
 
 IPluginV2DynamicExt * MishPluginCreator::deserializePlugin(
-  const char * name, const void * serialData, size_t serialLength) noexcept
+  const char * name, const void * serialData, size_t serialLength)
 {
-  (void)name;
-
   // This object will be deleted when the network is destroyed, which will
   // call MishPlugin::destroy()
   MishPlugin * obj = new MishPlugin(serialData, serialLength);

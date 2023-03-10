@@ -1,32 +1,29 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2020 Tier IV, Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+#include "successive_shortest_path.h"
 
-#include <object_association_merger/successive_shortest_path.hpp>
-
-#include <algorithm>
-#include <cassert>
-#include <functional>
-#include <queue>
-#include <unordered_map>
-#include <utility>
-#include <vector>
-
+// #include <algorithm>
 // #include <cstdio>
-// #include <chrono>
-// #include <iostream>
 // #include <limits>
+#include <queue>
+#include <vector>
 // #include <unordered_set>
+// #include <iostream>
+#include <cassert>
+// #include <chrono>
 
 namespace assignment_problem
 {
@@ -72,16 +69,16 @@ void MaximizeLinearAssignment(
   int n_agents = cost.size();
   int n_tasks = cost.at(0).size();
 
-  int n_dummies;
+  int n_dummys;
   if (sparse_cost) {
-    n_dummies = n_agents;
+    n_dummys = n_agents;
   } else {
-    n_dummies = 0;
+    n_dummys = 0;
   }
 
   int source = 0;
   int sink = n_agents + n_tasks + 1;
-  int n_nodes = n_agents + n_tasks + n_dummies + 2;
+  int n_nodes = n_agents + n_tasks + n_dummys + 2;
 
   // // Print cost matrix
   // std::cout << std::endl;
@@ -97,13 +94,12 @@ void MaximizeLinearAssignment(
   // std::chrono::system_clock::time_point start_time, end_time;
   // start_time = std::chrono::system_clock::now();
 
-  // Adjacency list of residual graph (index: nodes)
+  // Adjacency list of residual graph (indice: nodes)
   //     - 0: source node
   //     - {1, ...,  n_agents}: agent nodes
   //     - {n_agents+1, ...,  n_agents+n_tasks}: task nodes
   //     - n_agents+n_tasks+1: sink node
-  //     - {n_agents+n_tasks+2, ...,
-  //        n_agents+n_tasks+1+n_agents}: dummy node (when sparse_cost is true)
+  //     - {n_agents+n_tasks+2, ..., n_agents+n_tasks+1+n_agents}: dummy node (when sparse_cost is true)
   std::vector<std::vector<ResidualEdge>> adjacency_list(n_nodes);
 
   // Reserve memory
@@ -119,9 +115,9 @@ void MaximizeLinearAssignment(
       adjacency_list.at(v).reserve(n_agents + 1);
     } else if (v == sink) {
       // Sink
-      adjacency_list.at(v).reserve(n_tasks + n_dummies);
+      adjacency_list.at(v).reserve(n_tasks + n_dummys);
     } else {
-      // Dummies
+      // Dummys
       adjacency_list.at(v).reserve(2);
     }
   }
@@ -192,21 +188,17 @@ void MaximizeLinearAssignment(
   // for (int v = 0; v < n_nodes; v++)
   // {
   //   std::cout << v << ": ";
-  //   for (auto it_incident_edge = adjacency_list.at(v).cbegin();
-  //        it_incident_edge != adjacency_list.at(v).cend();
-  //        it_incident_edge++)
+  //   for (auto it_incident_edge = adjacency_list.at(v).cbegin(); it_incident_edge != adjacency_list.at(v).cend();
+  //   it_incident_edge++)
   //   {
-  //     std::cout << "(" << it_incident_edge->first << ", " <<
-  //       it_incident_edge->second.cost << ")";
+  //     std::cout << "(" << it_incident_edge->first << ", " << it_incident_edge->second.cost << ")";
   //   }
   //   std::cout << std::endl;
   // }
 
   // end_time = std::chrono::system_clock::now();
-  // double time = static_cast<double>(
-  //  std::chrono::duration_cast<std::chrono::microseconds>(
-  //    end_time - start_time).count() / 1000.0);
-  // std::cout << " " << time << " ";
+  // double time = static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(end_time -
+  // start_time).count() / 1000.0); std::cout << " " << time << " ";
 
   // Maximum flow value
   const int max_flow = std::min(n_agents, n_tasks);
@@ -285,8 +277,7 @@ void MaximizeLinearAssignment(
       }
     }
 
-    // Shortest path length to sink is greater than MAX_COST,
-    // which means no non-dummy routes left ,terminate
+    // Shortest path length to sink is greater than MAX_COST, which means no non-dummy routes left ,terminate
     if (potentials.at(sink) >= MAX_COST) {
       break;
     }
@@ -392,5 +383,7 @@ void MaximizeLinearAssignment(
     }
   }
 #endif
+
+  return;
 }
 }  // namespace assignment_problem

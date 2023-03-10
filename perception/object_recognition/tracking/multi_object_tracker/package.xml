@@ -1,32 +1,39 @@
 <?xml version="1.0"?>
 <package format="2">
   <name>multi_object_tracker</name>
-  <version>1.0.0</version>
-  <description>The ROS2 multi_object_tracker package</description>
+  <version>0.1.0</version>
+  <description>The multi_object_tracker package</description>
+
   <maintainer email="yukihiro.saito@tier4.jp">Yukihiro Saito</maintainer>
-  <!-- ROS2 -->
-  <maintainer email="jilada.eccleston@tier4.jp">Jilada Eccleston</maintainer>
-  <license>Apache License 2.0</license>
+  <license>Apache2</license>
 
-  <buildtool_depend>ament_cmake_auto</buildtool_depend>
-  <buildtool_depend>eigen3_cmake_module</buildtool_depend>
 
-  <depend>autoware_auto_perception_msgs</depend>
-  <depend>autoware_perception_msgs</depend>
-  <depend>autoware_utils</depend>
-  <depend>eigen</depend>
-  <depend>kalman_filter</depend>
-  <depend>mussp</depend>
-  <depend>rclcpp</depend>
-  <depend>rclcpp_components</depend>
-  <depend>tf2</depend>
-  <depend>tf2_ros</depend>
-  <depend>unique_identifier_msgs</depend>
-
-  <test_depend>ament_lint_auto</test_depend>
-  <test_depend>autoware_lint_common</test_depend>
+  <buildtool_depend>catkin</buildtool_depend>
+  <build_depend>autoware_perception_msgs</build_depend>
+  <build_depend>autoware_utils</build_depend>
+  <build_depend>roscpp</build_depend>
+  <build_depend>kalman_filter</build_depend>
+  <build_depend>tf2</build_depend>
+  <build_depend>tf2_ros</build_depend>
+  <build_depend>unique_id</build_depend>
+  <build_depend>uuid_msgs</build_depend>
+  <build_export_depend>autoware_perception_msgs</build_export_depend>
+  <build_export_depend>autoware_utils</build_export_depend>
+  <build_export_depend>roscpp</build_export_depend>
+  <build_export_depend>kalman_filter</build_export_depend>
+  <build_export_depend>tf2</build_export_depend>
+  <build_export_depend>tf2_ros</build_export_depend>
+  <build_export_depend>unique_id</build_export_depend>
+  <build_export_depend>uuid_msgs</build_export_depend>
+  <exec_depend>autoware_perception_msgs</exec_depend>
+  <exec_depend>autoware_utils</exec_depend>
+  <exec_depend>roscpp</exec_depend>
+  <exec_depend>kalman_filter</exec_depend>
+  <exec_depend>tf2</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>unique_id</exec_depend>
+  <exec_depend>uuid_msgs</exec_depend>
 
   <export>
-    <build_type>ament_cmake</build_type>
   </export>
 </package>

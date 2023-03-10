@@ -1,16 +1,18 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2020 Tier IV, Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 /*
  * Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
@@ -34,22 +36,22 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef TRT_YOLO_HPP_
-#define TRT_YOLO_HPP_
-
-#include <cuda_utils.hpp>
-#include <opencv2/core/core.hpp>
-#include <opencv2/highgui/highgui.hpp>
-#include <opencv2/opencv.hpp>
-#include <yolo_layer.hpp>
-
-#include <NvInfer.h>
-#include <cuda_runtime.h>
+#pragma once
 
 #include <iostream>
 #include <memory>
 #include <string>
 #include <vector>
+
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/opencv.hpp>
+
+#include <NvInfer.h>
+#include <cuda_runtime.h>
+
+#include "cuda_utils.h"
+#include "yolo_layer.h"
 
 namespace yolo
 {
@@ -70,13 +72,12 @@ using unique_ptr = std::unique_ptr<T, Deleter>;
 class Logger : public nvinfer1::ILogger
 {
 public:
-  explicit Logger(bool verbose) : verbose_(verbose) {}
+  Logger(bool verbose) : verbose_(verbose) {}
 
-  void log(Severity severity, const char * msg) noexcept override
+  void log(Severity severity, const char * msg) override
   {
-    if (verbose_ || ((severity != Severity::kINFO) && (severity != Severity::kVERBOSE))) {
+    if (verbose_ || ((severity != Severity::kINFO) && (severity != Severity::kVERBOSE)))
       std::cout << msg << std::endl;
-    }
   }
 
 private:
@@ -99,14 +100,13 @@ class Net
 {
 public:
   // Create engine from engine path
-  explicit Net(const std::string & engine_path, bool verbose = false);
+  Net(const std::string & engine_path, bool verbose = false);
 
   // Create engine from serialized onnx model
   Net(
     const std::string & onnx_file_path, const std::string & precision, const int max_batch_size,
     const Config & yolo_config, const std::vector<std::string> & calibration_images,
-    const std::string & calibration_table, bool verbose = false,
-    size_t workspace_size = (1ULL << 30));
+    const std::string & calibration_table, bool verbose = false, size_t workspace_size = (1ULL << 30));
 
   ~Net();
 
@@ -147,5 +147,3 @@ private:
 };
 
 }  // namespace yolo
-
-#endif  // TRT_YOLO_HPP_

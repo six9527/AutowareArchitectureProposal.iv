@@ -1,16 +1,18 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2020 Tier IV, Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 /*
  * Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
@@ -34,24 +36,17 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include <nms.hpp>
-#include <nms_plugin.hpp>
-
-#include <cuda_runtime_api.h>
 #include <stdio.h>
 #include <string.h>
-
 #include <cassert>
 #include <cmath>
 
-using nvinfer1::DataType;
-using nvinfer1::DimsExprs;
-using nvinfer1::DynamicPluginTensorDesc;
-using nvinfer1::IExprBuilder;
-using nvinfer1::IPluginV2DynamicExt;
-using nvinfer1::PluginFieldCollection;
-using nvinfer1::PluginFormat;
-using nvinfer1::PluginTensorDesc;
+#include <cuda_runtime_api.h>
+
+#include "nms.h"
+#include "nms_plugin.hpp"
+
+using namespace nvinfer1;
 
 namespace
 {
@@ -94,30 +89,28 @@ NMSPlugin::NMSPlugin(float nms_thresh, int detections_per_im, size_t count)
 
 NMSPlugin::NMSPlugin(void const * data, size_t length)
 {
-  (void)length;
-
   const char * d = static_cast<const char *>(data);
   read(d, nms_thresh_);
   read(d, detections_per_im_);
   read(d, count_);
 }
 
-const char * NMSPlugin::getPluginType() const noexcept { return NMS_PLUGIN_NAME; }
+const char * NMSPlugin::getPluginType() const { return NMS_PLUGIN_NAME; }
 
-const char * NMSPlugin::getPluginVersion() const noexcept { return NMS_PLUGIN_VERSION; }
+const char * NMSPlugin::getPluginVersion() const { return NMS_PLUGIN_VERSION; }
 
-int NMSPlugin::getNbOutputs() const noexcept { return 3; }
+int NMSPlugin::getNbOutputs() const { return 3; }
 
-int NMSPlugin::initialize() noexcept { return 0; }
+int NMSPlugin::initialize() { return 0; }
 
-void NMSPlugin::terminate() noexcept {}
+void NMSPlugin::terminate() {}
 
-size_t NMSPlugin::getSerializationSize() const noexcept
+size_t NMSPlugin::getSerializationSize() const
 {
   return sizeof(nms_thresh_) + sizeof(detections_per_im_) + sizeof(count_);
 }
 
-void NMSPlugin::serialize(void * buffer) const noexcept
+void NMSPlugin::serialize(void * buffer) const
 {
   char * d = static_cast<char *>(buffer);
   write(d, nms_thresh_);
@@ -125,37 +118,30 @@ void NMSPlugin::serialize(void * buffer) const noexcept
   write(d, count_);
 }
 
-void NMSPlugin::destroy() noexcept { delete this; }
+void NMSPlugin::destroy() { delete this; }
 
-void NMSPlugin::setPluginNamespace(const char * N) noexcept { (void)N; }
+void NMSPlugin::setPluginNamespace(const char * N) {}
 
-const char * NMSPlugin::getPluginNamespace() const noexcept { return NMS_PLUGIN_NAMESPACE; }
+const char * NMSPlugin::getPluginNamespace() const { return NMS_PLUGIN_NAMESPACE; }
 
 // IPluginV2Ext Methods
 
-DataType NMSPlugin::getOutputDataType(
-  int index, const DataType * inputTypes, int nbInputs) const noexcept
+DataType NMSPlugin::getOutputDataType(int index, const DataType * inputTypes, int nbInputs) const
 {
-  (void)index;
-  (void)inputTypes;
-  (void)nbInputs;
-
   assert(index < 3);
   return DataType::kFLOAT;
 }
 
 // IPluginV2DynamicExt Methods
 
-IPluginV2DynamicExt * NMSPlugin::clone() const noexcept
+IPluginV2DynamicExt * NMSPlugin::clone() const
 {
   return new NMSPlugin(nms_thresh_, detections_per_im_, count_);
 }
 
 DimsExprs NMSPlugin::getOutputDimensions(
-  int outputIndex, const DimsExprs * inputs, int nbInputs, IExprBuilder & exprBuilder) noexcept
+  int outputIndex, const DimsExprs * inputs, int nbInputs, IExprBuilder & exprBuilder)
 {
-  (void)nbInputs;
-
   DimsExprs output(inputs[0]);
   output.d[1] = exprBuilder.constant(detections_per_im_ * (outputIndex == 1 ? 4 : 1));
   output.d[2] = exprBuilder.constant(1);
@@ -164,26 +150,19 @@ DimsExprs NMSPlugin::getOutputDimensions(
 }
 
 bool NMSPlugin::supportsFormatCombination(
-  int pos, const PluginTensorDesc * inOut, int nbInputs, int nbOutputs) noexcept
+  int pos, const PluginTensorDesc * inOut, int nbInputs, int nbOutputs)
 {
-  (void)nbInputs;
-  (void)nbOutputs;
-
   assert(nbInputs == 3);
   assert(nbOutputs == 3);
   assert(pos < 6);
-  return inOut[pos].type == DataType::kFLOAT && inOut[pos].format == PluginFormat::kLINEAR;
+  return inOut[pos].type == DataType::kFLOAT &&
+         inOut[pos].format == nvinfer1::PluginFormat::kLINEAR;
 }
 
 void NMSPlugin::configurePlugin(
   const DynamicPluginTensorDesc * in, int nbInputs, const DynamicPluginTensorDesc * out,
-  int nbOutputs) noexcept
+  int nbOutputs)
 {
-  (void)nbInputs;
-  (void)nbOutputs;
-  (void)out;
-  (void)nbOutputs;
-
   assert(nbInputs == 3);
   assert(in[0].desc.dims.d[1] == in[2].desc.dims.d[1]);
   assert(in[1].desc.dims.d[1] == in[2].desc.dims.d[1] * 4);
@@ -192,12 +171,8 @@ void NMSPlugin::configurePlugin(
 
 size_t NMSPlugin::getWorkspaceSize(
   const PluginTensorDesc * inputs, int nbInputs, const PluginTensorDesc * outputs,
-  int nbOutputs) const noexcept
+  int nbOutputs) const
 {
-  (void)nbInputs;
-  (void)outputs;
-  (void)nbOutputs;
-
   if (size < 0) {
     size = nms(
       inputs->dims.d[0], nullptr, nullptr, count_, detections_per_im_, nms_thresh_, nullptr, 0,
@@ -208,8 +183,7 @@ size_t NMSPlugin::getWorkspaceSize(
 
 int NMSPlugin::enqueue(
   const PluginTensorDesc * inputDesc, const PluginTensorDesc * outputDesc,
-  const void * const * inputs, void * const * outputs, void * workspace,
-  cudaStream_t stream) noexcept
+  const void * const * inputs, void * const * outputs, void * workspace, cudaStream_t stream)
 {
   return nms(
     inputDesc->dims.d[0], inputs, outputs, count_, detections_per_im_, nms_thresh_, workspace,
@@ -218,27 +192,23 @@ int NMSPlugin::enqueue(
 
 NMSPluginCreator::NMSPluginCreator() {}
 
-const char * NMSPluginCreator::getPluginName() const noexcept { return NMS_PLUGIN_NAME; }
+const char * NMSPluginCreator::getPluginName() const { return NMS_PLUGIN_NAME; }
 
-const char * NMSPluginCreator::getPluginVersion() const noexcept { return NMS_PLUGIN_VERSION; }
+const char * NMSPluginCreator::getPluginVersion() const { return NMS_PLUGIN_VERSION; }
 
-const char * NMSPluginCreator::getPluginNamespace() const noexcept { return NMS_PLUGIN_NAMESPACE; }
+const char * NMSPluginCreator::getPluginNamespace() const { return NMS_PLUGIN_NAMESPACE; }
 
-void NMSPluginCreator::setPluginNamespace(const char * N) noexcept { (void)N; }
-const PluginFieldCollection * NMSPluginCreator::getFieldNames() noexcept { return nullptr; }
+void NMSPluginCreator::setPluginNamespace(const char * N) {}
+const PluginFieldCollection * NMSPluginCreator::getFieldNames() { return nullptr; }
 IPluginV2DynamicExt * NMSPluginCreator::createPlugin(
-  const char * name, const PluginFieldCollection * fc) noexcept
+  const char * name, const PluginFieldCollection * fc)
 {
-  (void)name;
-  (void)fc;
   return nullptr;
 }
 
 IPluginV2DynamicExt * NMSPluginCreator::deserializePlugin(
-  const char * name, const void * serialData, size_t serialLength) noexcept
+  const char * name, const void * serialData, size_t serialLength)
 {
-  (void)name;
-
   return new NMSPlugin(serialData, serialLength);
 }
 

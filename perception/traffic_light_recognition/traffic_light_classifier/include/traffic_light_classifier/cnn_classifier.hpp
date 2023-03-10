@@ -1,104 +1,81 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2020 Tier IV, Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+#pragma once
 
-#ifndef TRAFFIC_LIGHT_CLASSIFIER__CNN_CLASSIFIER_HPP_
-#define TRAFFIC_LIGHT_CLASSIFIER__CNN_CLASSIFIER_HPP_
+#include <autoware_perception_msgs/LampState.h>
+#include <cv_bridge/cv_bridge.h>
+#include <dynamic_reconfigure/server.h>
+#include <image_transport/image_transport.h>
+#include <ros/package.h>
+#include <ros/ros.h>
+#include <traffic_light_classifier/HSVFilterConfig.h>
+#include <traffic_light_classifier/classifier_interface.hpp>
 
-#include "traffic_light_classifier/classifier_interface.hpp"
-
-#include <image_transport/image_transport.hpp>
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
-#include <rclcpp/rclcpp.hpp>
-#include <trt_common.hpp>
 
-#include <autoware_auto_perception_msgs/msg/traffic_light.hpp>
-
-#include <cv_bridge/cv_bridge.h>
-
-#include <map>
-#include <memory>
-#include <string>
-#include <vector>
+#include <trt_common.h>
 
 namespace traffic_light
 {
 class CNNClassifier : public ClassifierInterface
 {
 public:
-  explicit CNNClassifier(rclcpp::Node * node_ptr);
-  virtual ~CNNClassifier() = default;
+  explicit CNNClassifier(const ros::NodeHandle & nh, const ros::NodeHandle & pnh);
 
-  bool getTrafficSignal(
+  bool getLampState(
     const cv::Mat & input_image,
-    autoware_auto_perception_msgs::msg::TrafficSignal & traffic_signal) override;
+    std::vector<autoware_perception_msgs::LampState> & states) override;
 
 private:
-  void preProcess(cv::Mat & image, std::vector<float> & tensor, bool normalize = true);
+  void parametersCallback(traffic_light_classifier::HSVFilterConfig & config, uint32_t level);
+  void preProcess(cv::Mat & image, std::vector<float> &  tensor, bool normalize = true);
   bool postProcess(
-    std::vector<float> & output_data_host,
-    autoware_auto_perception_msgs::msg::TrafficSignal & traffic_signal);
+    std::vector<float> & output_data_host, std::vector<autoware_perception_msgs::LampState> & states);
   bool readLabelfile(std::string filepath, std::vector<std::string> & labels);
-  bool isColorLabel(const std::string label);
   void calcSoftmax(std::vector<float> & data, std::vector<float> & probs, int num_output);
   std::vector<size_t> argsort(std::vector<float> & tensor, int num_output);
   void outputDebugImage(
-    cv::Mat & debug_image,
-    const autoware_auto_perception_msgs::msg::TrafficSignal & traffic_signal);
+    cv::Mat & debug_image, const std::vector<autoware_perception_msgs::LampState> & states);
 
 private:
   std::map<int, std::string> state2label_{
-    // color
-    {autoware_auto_perception_msgs::msg::TrafficLight::RED, "red"},
-    {autoware_auto_perception_msgs::msg::TrafficLight::AMBER, "yellow"},
-    {autoware_auto_perception_msgs::msg::TrafficLight::GREEN, "green"},
-    {autoware_auto_perception_msgs::msg::TrafficLight::WHITE, "white"},
-    // shape
-    {autoware_auto_perception_msgs::msg::TrafficLight::CIRCLE, "circle"},
-    {autoware_auto_perception_msgs::msg::TrafficLight::LEFT_ARROW, "left"},
-    {autoware_auto_perception_msgs::msg::TrafficLight::RIGHT_ARROW, "right"},
-    {autoware_auto_perception_msgs::msg::TrafficLight::UP_ARROW, "straight"},
-    {autoware_auto_perception_msgs::msg::TrafficLight::DOWN_ARROW, "down"},
-    {autoware_auto_perception_msgs::msg::TrafficLight::DOWN_LEFT_ARROW, "down_left"},
-    {autoware_auto_perception_msgs::msg::TrafficLight::DOWN_RIGHT_ARROW, "down_right"},
-    {autoware_auto_perception_msgs::msg::TrafficLight::CROSS, "cross"},
-    // other
-    {autoware_auto_perception_msgs::msg::TrafficLight::UNKNOWN, "unknown"},
+    {autoware_perception_msgs::LampState::RED, "red"},
+    {autoware_perception_msgs::LampState::YELLOW, "yellow"},
+    {autoware_perception_msgs::LampState::GREEN, "green"},
+    {autoware_perception_msgs::LampState::UP, "straight"},
+    {autoware_perception_msgs::LampState::LEFT, "left"},
+    {autoware_perception_msgs::LampState::RIGHT, "right"},
+    {autoware_perception_msgs::LampState::UNKNOWN, "unknown"},
   };
 
   std::map<std::string, int> label2state_{
-    // color
-    {"red", autoware_auto_perception_msgs::msg::TrafficLight::RED},
-    {"yellow", autoware_auto_perception_msgs::msg::TrafficLight::AMBER},
-    {"green", autoware_auto_perception_msgs::msg::TrafficLight::GREEN},
-    {"white", autoware_auto_perception_msgs::msg::TrafficLight::WHITE},
-    // shape
-    {"circle", autoware_auto_perception_msgs::msg::TrafficLight::CIRCLE},
-    {"left", autoware_auto_perception_msgs::msg::TrafficLight::LEFT_ARROW},
-    {"right", autoware_auto_perception_msgs::msg::TrafficLight::RIGHT_ARROW},
-    {"straight", autoware_auto_perception_msgs::msg::TrafficLight::UP_ARROW},
-    {"down", autoware_auto_perception_msgs::msg::TrafficLight::DOWN_ARROW},
-    {"down_left", autoware_auto_perception_msgs::msg::TrafficLight::DOWN_LEFT_ARROW},
-    {"down_right", autoware_auto_perception_msgs::msg::TrafficLight::DOWN_RIGHT_ARROW},
-    {"cross", autoware_auto_perception_msgs::msg::TrafficLight::CROSS},
-    // other
-    {"unknown", autoware_auto_perception_msgs::msg::TrafficLight::UNKNOWN},
+    {"red", autoware_perception_msgs::LampState::RED},
+    {"yellow", autoware_perception_msgs::LampState::YELLOW},
+    {"green", autoware_perception_msgs::LampState::GREEN},
+    {"straight", autoware_perception_msgs::LampState::UP},
+    {"left", autoware_perception_msgs::LampState::LEFT},
+    {"right", autoware_perception_msgs::LampState::RIGHT},
+    {"unknown", autoware_perception_msgs::LampState::UNKNOWN},
   };
 
-  rclcpp::Node * node_ptr_;
-
   std::shared_ptr<Tn::TrtCommon> trt_;
+  ros::NodeHandle nh_;
+  ros::NodeHandle pnh_;
+  image_transport::ImageTransport image_transport_;
   image_transport::Publisher image_pub_;
   std::vector<std::string> labels_;
   std::vector<float> mean_{0.242, 0.193, 0.201};
@@ -109,5 +86,3 @@ private:
 };
 
 }  // namespace traffic_light
-
-#endif  // TRAFFIC_LIGHT_CLASSIFIER__CNN_CLASSIFIER_HPP_

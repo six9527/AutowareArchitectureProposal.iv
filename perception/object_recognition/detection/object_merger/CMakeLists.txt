@@ -1,47 +1,59 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.0.2)
 project(object_merger)
 
-find_package(PCL REQUIRED COMPONENTS common filters)
-find_package(ament_cmake_auto REQUIRED)
-ament_auto_find_build_dependencies()
+add_compile_options(-std=c++14)
 
-### Compile options
-if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 14)
-  set(CMAKE_CXX_STANDARD_REQUIRED ON)
-  set(CMAKE_CXX_EXTENSIONS OFF)
-endif()
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic)
-endif()
+find_package(catkin REQUIRED COMPONENTS
+  autoware_perception_msgs
+  message_filters
+  pcl_conversions
+  pcl_ros
+  roscpp
+  sensor_msgs
+  tf2
+  tf2_ros
+  tf2_sensor_msgs
+)
+
+catkin_package()
+
+###########
+## Build ##
+###########
 
 include_directories(
   include
+  ${catkin_INCLUDE_DIRS}
 )
 
-ament_auto_add_library(object_association_merger SHARED
+add_executable(object_association_merger_node
   src/object_association_merger/utils/utils.cpp
   src/object_association_merger/data_association/data_association.cpp
   src/object_association_merger/data_association/successive_shortest_path/successive_shortest_path.cpp
   src/object_association_merger/node.cpp
+  src/object_association_merger/main.cpp
 )
 
-target_link_libraries(object_association_merger ${PCL_LIBRARIES})
+add_dependencies(object_association_merger_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
-rclcpp_components_register_node(object_association_merger
-  PLUGIN "object_association::ObjectAssociationMergerNode"
-  EXECUTABLE object_association_merger_node
+target_link_libraries(object_association_merger_node
+  ${catkin_LIBRARIES}
 )
-
-if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  ament_lint_auto_find_test_dependencies()
-endif()
 
 #############
 ## Install ##
 #############
 
-ament_auto_package(INSTALL_TO_SHARE
-  launch
+install(
+  TARGETS
+    object_association_merger_node
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+install(
+  DIRECTORY
+    launch
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )

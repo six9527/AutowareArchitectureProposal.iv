@@ -1,21 +1,19 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-#include <trt_common.hpp>
-
-#include <functional>
-#include <string>
+/*
+ * Copyright 2020 Tier IV, Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+#include "trt_common.h"
 
 namespace Tn
 {
@@ -80,8 +78,8 @@ bool TrtCommon::loadEngine(std::string engine_file_path)
   engine_buffer << engine_file.rdbuf();
   std::string engine_str = engine_buffer.str();
   runtime_ = UniquePtr<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(logger_));
-  engine_ = UniquePtr<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(
-    reinterpret_cast<const void *>(engine_str.data()), engine_str.size(), nullptr));
+  engine_ = UniquePtr<nvinfer1::ICudaEngine>(
+    runtime_->deserializeCudaEngine((void *)engine_str.data(), engine_str.size(), nullptr));
   return true;
 }
 
@@ -111,29 +109,26 @@ bool TrtCommon::buildEngineFromOnnx(std::string onnx_file_path, std::string outp
   }
 
   engine_ = UniquePtr<nvinfer1::ICudaEngine>(builder->buildEngineWithConfig(*network, *config));
-  if (!engine_) {
-    return false;
-  }
+  if (!engine_) return false;
 
   // save engine
   nvinfer1::IHostMemory * data = engine_->serialize();
   std::ofstream file;
   file.open(output_engine_file_path, std::ios::binary | std::ios::out);
-  if (!file.is_open()) {
-    return false;
-  }
+  if (!file.is_open()) return false;
   file.write((const char *)data->data(), data->size());
   file.close();
 
   return true;
 }
 
-bool TrtCommon::isInitialized() { return is_initialized_; }
+bool TrtCommon::isInitialized() { return is_initialized_; };
 
 int TrtCommon::getNumInput()
 {
   return std::accumulate(
     input_dims_.d, input_dims_.d + input_dims_.nbDims, 1, std::multiplies<int>());
+  ;
 }
 
 int TrtCommon::getNumOutput()
