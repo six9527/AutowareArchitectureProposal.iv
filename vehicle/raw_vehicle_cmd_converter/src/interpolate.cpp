@@ -1,36 +1,32 @@
-//  Copyright 2021 Tier IV, Inc. All rights reserved.
-//
-//  Licensed under the Apache License, Version 2.0 (the "License");
-//  you may not use this file except in compliance with the License.
-//  You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-//  Unless required by applicable law or agreed to in writing, software
-//  distributed under the License is distributed on an "AS IS" BASIS,
-//  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-//  See the License for the specific language governing permissions and
-//  limitations under the License.
+/*
+ * Copyright 2018-2019 Autoware Foundation. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
-#include "raw_vehicle_cmd_converter/interpolate.hpp"
-
-#include <vector>
+#include "raw_vehicle_cmd_converter/interpolate.h"
 
 /*
  * linear interpolation
  */
 
-namespace raw_vehicle_cmd_converter
-{
 bool LinearInterpolate::interpolate(
   const std::vector<double> & base_index, const std::vector<double> & base_value,
   const double & return_index, double & return_value)
 {
   auto isIncrease = [](const std::vector<double> & x) {
-    for (size_t i = 0; i < x.size() - 1; ++i) {
-      if (x[i] > x[i + 1]) {
-        return false;
-      }
+    for (int i = 0; i < (int)x.size() - 1; ++i) {
+      if (x[i] > x[i + 1]) return false;
     }
     return true;
   };
@@ -56,12 +52,12 @@ bool LinearInterpolate::interpolate(
     printf(
       "base_index.size() = %lu, base_value.size() = %lu\n", base_index.size(), base_value.size());
     printf("base_index: [");
-    for (size_t i = 0; i < base_index.size(); ++i) {
+    for (int i = 0; i < base_index.size(); ++i) {
       printf("%f, ", base_index.at(i));
     }
     printf("]\n");
     printf("base_value: [");
-    for (size_t i = 0; i < base_value.size(); ++i) {
+    for (int i = 0; i < base_value.size(); ++i) {
       printf("%f, ", base_value.at(i));
     }
     printf("]\n");
@@ -70,7 +66,7 @@ bool LinearInterpolate::interpolate(
   }
 
   // calculate linear interpolation
-  size_t i = 0;
+  int i = 0;
   if (base_index[i] == return_index) {
     return_value = base_value[i];
     return true;
@@ -78,7 +74,7 @@ bool LinearInterpolate::interpolate(
   while (base_index[i] < return_index) {
     ++i;
   }
-  if (i <= 0 || base_index.size() - 1 < i) {
+  if (i <= 0 || (int)base_index.size() - 1 < i) {
     std::cerr << "? something wrong. skip this return_index." << std::endl;
     return false;
   }
@@ -99,4 +95,3 @@ bool LinearInterpolate::interpolate(
 
   return true;
 }
-}  // namespace raw_vehicle_cmd_converter

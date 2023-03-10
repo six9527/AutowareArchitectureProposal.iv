@@ -1,51 +1,57 @@
-cmake_minimum_required(VERSION 3.5)
-
+cmake_minimum_required(VERSION 3.0.2)
 project(raw_vehicle_cmd_converter)
+add_compile_options(-std=c++14)
 
-### Compile options
-if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 14)
-  set(CMAKE_CXX_STANDARD_REQUIRED ON)
-  set(CMAKE_CXX_EXTENSIONS OFF)
-endif()
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic)
-endif()
+find_package(
+  catkin REQUIRED COMPONENTS
+  roscpp
+  std_msgs
+  autoware_vehicle_msgs
+  geometry_msgs
+)
 
-find_package(ament_cmake_auto REQUIRED)
-ament_auto_find_build_dependencies()
+catkin_package(
+  INCLUDE_DIRS include
+  LIBRARIES accel_map_converter
+  CATKIN_DEPENDS roscpp std_msgs autoware_vehicle_msgs geometry_msgs
+)
 
-ament_auto_add_library(actuation_map_converter SHARED
+include_directories(
+  include
+  ${catkin_INCLUDE_DIRS}
+)
+
+add_library(accel_map_converter
   src/accel_map.cpp
   src/brake_map.cpp
   src/csv_loader.cpp
   src/interpolate.cpp
-  src/pid.cpp
-  src/steer_converter.cpp
 )
+target_link_libraries(accel_map_converter ${catkin_LIBRARIES})
+add_dependencies(accel_map_converter ${catkin_EXPORTED_TARGETS})
 
-ament_auto_add_library(raw_vehicle_cmd_converter_node_component SHARED
+add_executable(raw_vehicle_cmd_converter_node
   src/node.cpp
+  src/main.cpp
+)
+add_dependencies(raw_vehicle_cmd_converter_node ${catkin_EXPORTED_TARGETS})
+target_link_libraries(raw_vehicle_cmd_converter_node ${catkin_LIBRARIES} accel_map_converter)
+
+install(TARGETS
+    accel_map_converter
+    raw_vehicle_cmd_converter_node
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
-target_link_libraries(raw_vehicle_cmd_converter_node_component actuation_map_converter)
-
-rclcpp_components_register_node(raw_vehicle_cmd_converter_node_component
-  PLUGIN "raw_vehicle_cmd_converter::RawVehicleCommandConverterNode"
-  EXECUTABLE raw_vehicle_cmd_converter_node
+install(DIRECTORY include/${PROJECT_NAME}/
+  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
 )
 
-if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  ament_lint_auto_find_test_dependencies()
-endif()
-
-ament_auto_package(INSTALL_TO_SHARE
-  config
-  data
-  launch
-)
-
-install(PROGRAMS scripts/plot_accel_brake_map.py
-  DESTINATION lib/${PROJECT_NAME}
+install(
+  DIRECTORY
+    launch
+    data
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )
