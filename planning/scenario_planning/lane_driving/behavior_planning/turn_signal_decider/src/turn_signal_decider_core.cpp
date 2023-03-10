@@ -1,86 +1,77 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2020 Tier IV, Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+#include <turn_signal_decider/turn_signal_decider.h>
 
-#include "turn_signal_decider/turn_signal_decider.hpp"
-
-#include <limits>
-#include <memory>
-#include <string>
-#include <utility>
-
-using autoware_planning_msgs::msg::PathWithLaneId;
-using autoware_vehicle_msgs::msg::TurnSignal;
-
-using std::placeholders::_1;
+using autoware_planning_msgs::PathWithLaneId;
+using autoware_vehicle_msgs::TurnSignal;
 
 namespace
 {
-double getDistance3d(const geometry_msgs::msg::Point & p1, const geometry_msgs::msg::Point & p2)
+double getDistance3d(const geometry_msgs::Point & p1, const geometry_msgs::Point & p2)
 {
   return std::sqrt(std::pow(p1.x - p2.x, 2) + std::pow(p1.y - p2.y, 2) + std::pow(p1.z - p2.z, 2));
 }
+
+template <class T>
+T waitForParam(const ros::NodeHandle & nh, const std::string & key)
+{
+  T value;
+
+  ros::Rate rate(1.0);
+  while (ros::ok()) {
+    const auto result = nh.getParam(key, value);
+    if (result) {
+      return value;
+    }
+
+    ROS_INFO("waiting for parameter `%s` ...", key.c_str());
+    rate.sleep();
+  }
+
+  return {};
+}
+
 }  // namespace
 
 namespace turn_signal_decider
 {
-TurnSignalDecider::TurnSignalDecider(const rclcpp::NodeOptions & node_options)
-: rclcpp::Node("turn_signal_decider", node_options), data_(this)
+TurnSignalDecider::TurnSignalDecider() : pnh_("~")
 {
   // setup data manager
   constexpr double vehicle_pose_update_period = 0.1;
-  auto vehicle_pose_timer_callback = std::bind(&DataManager::onVehiclePoseUpdate, &data_);
-  auto vehicle_pose_timer_period = std::chrono::duration_cast<std::chrono::nanoseconds>(
-    std::chrono::duration<double>(vehicle_pose_update_period));
-
-  vehicle_pose_timer_ =
-    std::make_shared<rclcpp::GenericTimer<decltype(vehicle_pose_timer_callback)>>(
-      this->get_clock(), vehicle_pose_timer_period, std::move(vehicle_pose_timer_callback),
-      this->get_node_base_interface()->get_context());
-  this->get_node_timers_interface()->add_timer(vehicle_pose_timer_, nullptr);
-
-  path_subscription_ = this->create_subscription<autoware_planning_msgs::msg::PathWithLaneId>(
-    "input/path_with_lane_id", rclcpp::QoS{1},
-    std::bind(&DataManager::onPathWithLaneId, &data_, _1));
-  map_subscription_ = this->create_subscription<autoware_lanelet2_msgs::msg::MapBin>(
-    "input/vector_map", rclcpp::QoS{1}.transient_local(),
-    std::bind(&DataManager::onLaneletMap, &data_, _1));
+  vehicle_pose_timer_ = pnh_.createTimer(
+    ros::Duration(vehicle_pose_update_period), &DataManager::onVehiclePoseUpdate, &data_);
+  path_subscriber_ =
+    pnh_.subscribe("input/path_with_lane_id", 1, &DataManager::onPathWithLaneId, &data_);
+  map_subscriber_ = pnh_.subscribe("input/vector_map", 1, &DataManager::onLaneletMap, &data_);
 
   // get ROS parameters
-  parameters_.lane_change_search_distance =
-    this->declare_parameter("lane_change_search_distance", static_cast<double>(30));
-  parameters_.intersection_search_distance =
-    this->declare_parameter("intersection_search_distance", static_cast<double>(30));
-
-  const auto vehicle_info = vehicle_info_util::VehicleInfoUtil(*this).getVehicleInfo();
-  parameters_.base_link2front = vehicle_info.wheel_base_m + vehicle_info.front_overhang_m;
+  pnh_.param<double>("lane_change_search_distance", parameters_.lane_change_search_distance, 30);
+  pnh_.param<double>("intersection_search_distance", parameters_.intersection_search_distance, 30);
+  parameters_.base_link2front = waitForParam<double>(pnh_, "/vehicle_info/wheel_base") +
+                                waitForParam<double>(pnh_, "/vehicle_info/front_overhang");
 
   // set publishers
-  turn_signal_publisher_ =
-    this->create_publisher<TurnSignal>("output/turn_signal_cmd", rclcpp::QoS{1});
-
-  constexpr double turn_signal_update_period = 0.1;
-  auto turn_signal_timer_callback = std::bind(&TurnSignalDecider::onTurnSignalTimer, this);
-  auto turn_signal_timer_period = std::chrono::duration_cast<std::chrono::nanoseconds>(
-    std::chrono::duration<double>(turn_signal_update_period));
-
-  turn_signal_timer_ = std::make_shared<rclcpp::GenericTimer<decltype(turn_signal_timer_callback)>>(
-    this->get_clock(), turn_signal_timer_period, std::move(turn_signal_timer_callback),
-    this->get_node_base_interface()->get_context());
-  this->get_node_timers_interface()->add_timer(turn_signal_timer_, nullptr);
+  turn_signal_publisher_ = pnh_.advertise<TurnSignal>("output/turn_signal_cmd", 1, false);
+  constexpr double timer_period = 0.1;
+  turn_signal_timer_ =
+    pnh_.createTimer(ros::Duration(timer_period), &TurnSignalDecider::onTurnSignalTimer, this);
 }
 
-void TurnSignalDecider::onTurnSignalTimer()
+void TurnSignalDecider::onTurnSignalTimer(const ros::TimerEvent & event)
 {
   // wait for mandatory topics
   if (!data_.isDataReady()) {
@@ -92,9 +83,7 @@ void TurnSignalDecider::onTurnSignalTimer()
   FrenetCoordinate3d vehicle_pose_frenet;
   if (!convertToFrenetCoordinate3d(
         path, data_.getVehiclePoseStamped().pose.position, &vehicle_pose_frenet)) {
-    RCLCPP_ERROR_THROTTLE(
-      get_logger(), *get_clock(), std::chrono::milliseconds(5000).count(),
-      "failed to convert vehicle pose into frenet coordinate");
+    ROS_ERROR_THROTTLE(5, "failed to convert vehicle pose into frenet coordinate");
     return;
   }
 
@@ -114,9 +103,9 @@ void TurnSignalDecider::onTurnSignalTimer()
     }
   }
 
-  turn_signal.header.stamp = this->now();
+  turn_signal.header.stamp = ros::Time::now();
   turn_signal.header.frame_id = "base_link";
-  turn_signal_publisher_->publish(turn_signal);
+  turn_signal_publisher_.publish(turn_signal);
 }
 
 lanelet::routing::RelationType TurnSignalDecider::getRelation(
@@ -156,12 +145,11 @@ lanelet::routing::RelationType TurnSignalDecider::getRelation(
 }
 
 bool TurnSignalDecider::isChangingLane(
-  const autoware_planning_msgs::msg::PathWithLaneId & path,
-  const FrenetCoordinate3d & vehicle_pose_frenet, TurnSignal * signal_state_ptr,
-  double * distance_ptr) const
+  const PathWithLaneId & path, const FrenetCoordinate3d & vehicle_pose_frenet,
+  TurnSignal * signal_state_ptr, double * distance_ptr) const
 {
   if (signal_state_ptr == nullptr || distance_ptr == nullptr) {
-    RCLCPP_ERROR(this->get_logger(), "Given argument is nullptr.");
+    ROS_ERROR("Given argument is nullptr.");
     return false;
   }
   if (path.points.empty()) {
@@ -212,12 +200,11 @@ bool TurnSignalDecider::isChangingLane(
 }
 
 bool TurnSignalDecider::isTurning(
-  const autoware_planning_msgs::msg::PathWithLaneId & path,
-  const FrenetCoordinate3d & vehicle_pose_frenet, TurnSignal * signal_state_ptr,
-  double * distance_ptr) const
+  const PathWithLaneId & path, const FrenetCoordinate3d & vehicle_pose_frenet,
+  TurnSignal * signal_state_ptr, double * distance_ptr) const
 {
   if (signal_state_ptr == nullptr || distance_ptr == nullptr) {
-    RCLCPP_ERROR(this->get_logger(), "Given argument is nullptr.");
+    ROS_ERROR("Given argument is nullptr.");
     return false;
   }
   if (path.points.empty()) {
@@ -247,9 +234,7 @@ bool TurnSignalDecider::isTurning(
       if (
         lane.attributeOr("turn_signal_distance", std::numeric_limits<double>::max()) <
         distance_from_vehicle_front) {
-        if (1 < path_point.lane_ids.size() && lane_id == path_point.lane_ids.back()) {
-          continue;
-        }
+        if (1 < path_point.lane_ids.size() && lane_id == path_point.lane_ids.back()) continue;
       }
       if (lane.attributeOr("turn_direction", std::string("none")) == "left") {
         signal_state_ptr->data = TurnSignal::LEFT;
@@ -270,6 +255,3 @@ bool TurnSignalDecider::isTurning(
 }
 
 }  // namespace turn_signal_decider
-
-#include <rclcpp_components/register_node_macro.hpp>
-RCLCPP_COMPONENTS_REGISTER_NODE(turn_signal_decider::TurnSignalDecider)

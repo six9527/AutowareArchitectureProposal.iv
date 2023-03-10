@@ -1,16 +1,18 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2020 Tier IV, Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 /*
  *  Copyright (c) 2018, Nagoya University
@@ -42,10 +44,12 @@
  *  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  ********************/
 
-#include "costmap_generator/points_to_costmap.hpp"
+#include <costmap_generator/points_to_costmap.h>
 
-#include <string>
-#include <vector>
+// Constructor
+PointsToCostmap::PointsToCostmap() {}
+
+PointsToCostmap::~PointsToCostmap() {}
 
 void PointsToCostmap::initGridmapParam(const grid_map::GridMap & gridmap)
 {
@@ -86,7 +90,7 @@ grid_map::Index PointsToCostmap::fetchGridIndexFromPoint(const pcl::PointXYZ & p
 }
 
 std::vector<std::vector<std::vector<double>>> PointsToCostmap::assignPoints2GridCell(
-  const pcl::PointCloud<pcl::PointXYZ> & in_sensor_points)
+  const grid_map::GridMap & gridmap, const pcl::PointCloud<pcl::PointXYZ>::Ptr & in_sensor_points)
 {
   double y_cell_size = std::ceil(grid_length_y_ * (1 / grid_resolution_));
   double x_cell_size = std::ceil(grid_length_x_ * (1 / grid_resolution_));
@@ -94,7 +98,7 @@ std::vector<std::vector<std::vector<double>>> PointsToCostmap::assignPoints2Grid
   std::vector<std::vector<double>> vec_y_z(y_cell_size, z_vec);
   std::vector<std::vector<std::vector<double>>> vec_x_y_z(x_cell_size, vec_y_z);
 
-  for (const auto & point : in_sensor_points) {
+  for (const auto & point : *in_sensor_points) {
     grid_map::Index grid_ind = fetchGridIndexFromPoint(point);
     if (isValidInd(grid_ind)) {
       vec_x_y_z[grid_ind.x()][grid_ind.y()].push_back(point.z);
@@ -131,10 +135,12 @@ grid_map::Matrix PointsToCostmap::calculateCostmap(
 grid_map::Matrix PointsToCostmap::makeCostmapFromPoints(
   const double maximum_height_thres, const double minimum_lidar_height_thres,
   const double grid_min_value, const double grid_max_value, const grid_map::GridMap & gridmap,
-  const std::string & gridmap_layer_name, const pcl::PointCloud<pcl::PointXYZ> & in_sensor_points)
+  const std::string & gridmap_layer_name,
+  const pcl::PointCloud<pcl::PointXYZ>::Ptr & in_sensor_points)
 {
   initGridmapParam(gridmap);
-  std::vector<std::vector<std::vector<double>>> grid_vec = assignPoints2GridCell(in_sensor_points);
+  std::vector<std::vector<std::vector<double>>> grid_vec =
+    assignPoints2GridCell(gridmap, in_sensor_points);
   grid_map::Matrix costmap = calculateCostmap(
     maximum_height_thres, minimum_lidar_height_thres, grid_min_value, grid_max_value, gridmap,
     gridmap_layer_name, grid_vec);

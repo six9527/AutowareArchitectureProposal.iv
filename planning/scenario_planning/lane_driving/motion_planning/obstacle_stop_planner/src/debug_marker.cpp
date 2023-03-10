@@ -1,47 +1,31 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
+/*
+ * Copyright 2020 Tier IV, Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 #include "obstacle_stop_planner/debug_marker.hpp"
-
-#include <autoware_utils/autoware_utils.hpp>
-
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
-
-#include <memory>
-#include <vector>
-
-using autoware_utils::appendMarkerArray;
-using autoware_utils::calcOffsetPose;
-using autoware_utils::createDefaultMarker;
-using autoware_utils::createMarkerColor;
-using autoware_utils::createMarkerOrientation;
-using autoware_utils::createMarkerScale;
-using autoware_utils::createPoint;
-using autoware_utils::createSlowDownVirtualWallMarker;
-using autoware_utils::createStopVirtualWallMarker;
-
+// namespace {
+// convertPose2Transform
+// }
 namespace motion_planning
 {
-ObstacleStopPlannerDebugNode::ObstacleStopPlannerDebugNode(
-  rclcpp::Node * node, const double base_link2front)
-: node_(node), base_link2front_(base_link2front)
+ObstacleStopPlannerDebugNode::ObstacleStopPlannerDebugNode(const double base_link2front)
+: nh_(), pnh_("~"), base_link2front_(base_link2front)
 {
-  debug_viz_pub_ =
-    node_->create_publisher<visualization_msgs::msg::MarkerArray>("~/debug/marker", 1);
-  stop_reason_pub_ = node_->create_publisher<autoware_planning_msgs::msg::StopReasonArray>(
-    "~/output/stop_reasons", 1);
-  pub_debug_values_ = node_->create_publisher<Float32MultiArrayStamped>("~/debug/debug_values", 1);
+  debug_viz_pub_ = pnh_.advertise<visualization_msgs::MarkerArray>("debug/marker", 1);
+  stop_reason_pub_ =
+    pnh_.advertise<autoware_planning_msgs::StopReasonArray>("output/stop_reasons", 1);
 }
 
 bool ObstacleStopPlannerDebugNode::pushPolygon(
@@ -61,42 +45,33 @@ bool ObstacleStopPlannerDebugNode::pushPolygon(
 {
   switch (type) {
     case PolygonType::Vehicle:
-      if (!polygon.empty()) {
-        vehicle_polygons_.push_back(polygon);
-      }
+      if (!polygon.empty()) vehicle_polygons_.push_back(polygon);
       return true;
     case PolygonType::Collision:
-      if (!polygon.empty()) {
-        collision_polygons_.push_back(polygon);
-      }
+      if (!polygon.empty()) collision_polygons_.push_back(polygon);
       return true;
     case PolygonType::SlowDownRange:
-      if (!polygon.empty()) {
-        slow_down_range_polygons_.push_back(polygon);
-      }
+      if (!polygon.empty()) slow_down_range_polygons_.push_back(polygon);
       return true;
     case PolygonType::SlowDown:
-      if (!polygon.empty()) {
-        slow_down_polygons_.push_back(polygon);
-      }
+      if (!polygon.empty()) slow_down_polygons_.push_back(polygon);
       return true;
     default:
       return false;
   }
 }
 
-bool ObstacleStopPlannerDebugNode::pushPose(
-  const geometry_msgs::msg::Pose & pose, const PoseType & type)
+bool ObstacleStopPlannerDebugNode::pushPose(const geometry_msgs::Pose & pose, const PoseType & type)
 {
   switch (type) {
     case PoseType::Stop:
-      stop_pose_ptr_ = std::make_shared<geometry_msgs::msg::Pose>(pose);
+      stop_pose_ptr_ = std::make_shared<geometry_msgs::Pose>(pose);
       return true;
     case PoseType::SlowDownStart:
-      slow_down_start_pose_ptr_ = std::make_shared<geometry_msgs::msg::Pose>(pose);
+      slow_down_start_pose_ptr_ = std::make_shared<geometry_msgs::Pose>(pose);
       return true;
     case PoseType::SlowDownEnd:
-      slow_down_end_pose_ptr_ = std::make_shared<geometry_msgs::msg::Pose>(pose);
+      slow_down_end_pose_ptr_ = std::make_shared<geometry_msgs::Pose>(pose);
       return true;
     default:
       return false;
@@ -104,14 +79,14 @@ bool ObstacleStopPlannerDebugNode::pushPose(
 }
 
 bool ObstacleStopPlannerDebugNode::pushObstaclePoint(
-  const geometry_msgs::msg::Point & obstacle_point, const PointType & type)
+  const geometry_msgs::Point & obstacle_point, const PointType & type)
 {
   switch (type) {
     case PointType::Stop:
-      stop_obstacle_point_ptr_ = std::make_shared<geometry_msgs::msg::Point>(obstacle_point);
+      stop_obstacle_point_ptr_ = std::make_shared<geometry_msgs::Point>(obstacle_point);
       return true;
     case PointType::SlowDown:
-      slow_down_obstacle_point_ptr_ = std::make_shared<geometry_msgs::msg::Point>(obstacle_point);
+      slow_down_obstacle_point_ptr_ = std::make_shared<geometry_msgs::Point>(obstacle_point);
       return true;
     default:
       return false;
@@ -121,7 +96,7 @@ bool ObstacleStopPlannerDebugNode::pushObstaclePoint(
 bool ObstacleStopPlannerDebugNode::pushObstaclePoint(
   const pcl::PointXYZ & obstacle_point, const PointType & type)
 {
-  geometry_msgs::msg::Point ros_point;
+  geometry_msgs::Point ros_point;
   ros_point.x = obstacle_point.x;
   ros_point.y = obstacle_point.y;
   ros_point.z = obstacle_point.z;
@@ -132,19 +107,11 @@ void ObstacleStopPlannerDebugNode::publish()
 {
   /* publish debug marker for rviz */
   const auto visualization_msg = makeVisualizationMarker();
-  debug_viz_pub_->publish(visualization_msg);
+  debug_viz_pub_.publish(visualization_msg);
 
   /* publish stop reason for autoware api */
   const auto stop_reason_msg = makeStopReasonArray();
-  stop_reason_pub_->publish(stop_reason_msg);
-
-  // publish debug values
-  autoware_debug_msgs::msg::Float32MultiArrayStamped debug_msg{};
-  debug_msg.stamp = node_->now();
-  for (const auto & v : debug_values_.getValues()) {
-    debug_msg.data.push_back(v);
-  }
-  pub_debug_values_->publish(debug_msg);
+  stop_reason_pub_.publish(stop_reason_msg);
 
   /* reset variables */
   vehicle_polygons_.clear();
@@ -158,29 +125,59 @@ void ObstacleStopPlannerDebugNode::publish()
   slow_down_obstacle_point_ptr_ = nullptr;
 }
 
-visualization_msgs::msg::MarkerArray ObstacleStopPlannerDebugNode::makeVisualizationMarker()
+visualization_msgs::MarkerArray ObstacleStopPlannerDebugNode::makeVisualizationMarker()
 {
-  visualization_msgs::msg::MarkerArray msg;
-  rclcpp::Time current_time = node_->now();
+  visualization_msgs::MarkerArray msg;
+  ros::Time current_time = ros::Time::now();
+  tf2::Transform tf_base_link2front(
+    tf2::Quaternion(0.0, 0.0, 0.0, 1.0), tf2::Vector3(base_link2front_, 0.0, 0.0));
 
   // polygon
   if (!vehicle_polygons_.empty()) {
-    auto marker = createDefaultMarker(
-      "map", current_time, "detection_polygons", 0, visualization_msgs::msg::Marker::LINE_LIST,
-      createMarkerScale(0.01, 0.0, 0.0), createMarkerColor(0.0, 1.0, 0.0, 0.999));
-
+    visualization_msgs::Marker marker;
+    marker.header.frame_id = "map";
+    marker.header.stamp = current_time;
+    marker.ns = "detection_polygons";
+    marker.id = 0;
+    marker.lifetime = ros::Duration(0.5);
+    marker.type = visualization_msgs::Marker::LINE_LIST;
+    marker.action = visualization_msgs::Marker::ADD;
+    marker.pose.position.x = 0.0;
+    marker.pose.position.y = 0.0;
+    marker.pose.position.z = 0.0;
+    marker.pose.orientation.x = 0.0;
+    marker.pose.orientation.y = 0.0;
+    marker.pose.orientation.z = 0.0;
+    marker.pose.orientation.w = 1.0;
+    marker.scale.x = 0.01;
+    marker.scale.y = 0.0;
+    marker.scale.z = 0.0;
+    marker.color.a = 0.999;  // Don't forget to set the alpha!
+    marker.color.r = 0.0;
+    marker.color.g = 1.0;
+    marker.color.b = 0.0;
     for (size_t i = 0; i < vehicle_polygons_.size(); ++i) {
       for (size_t j = 0; j < vehicle_polygons_.at(i).size(); ++j) {
         {
-          const auto & p = vehicle_polygons_.at(i).at(j);
-          marker.points.push_back(createPoint(p.x(), p.y(), p.z()));
+          geometry_msgs::Point point;
+          point.x = vehicle_polygons_.at(i).at(j).x();
+          point.y = vehicle_polygons_.at(i).at(j).y();
+          point.z = vehicle_polygons_.at(i).at(j).z();
+          marker.points.push_back(point);
         }
         if (j + 1 == vehicle_polygons_.at(i).size()) {
-          const auto & p = vehicle_polygons_.at(i).at(0);
-          marker.points.push_back(createPoint(p.x(), p.y(), p.z()));
+          geometry_msgs::Point point;
+          point.x = vehicle_polygons_.at(i).at(0).x();
+          point.y = vehicle_polygons_.at(i).at(0).y();
+          point.z = vehicle_polygons_.at(i).at(0).z();
+          marker.points.push_back(point);
+
         } else {
-          const auto & p = vehicle_polygons_.at(i).at(j + 1);
-          marker.points.push_back(createPoint(p.x(), p.y(), p.z()));
+          geometry_msgs::Point point;
+          point.x = vehicle_polygons_.at(i).at(j + 1).x();
+          point.y = vehicle_polygons_.at(i).at(j + 1).y();
+          point.z = vehicle_polygons_.at(i).at(j + 1).z();
+          marker.points.push_back(point);
         }
       }
     }
@@ -188,22 +185,50 @@ visualization_msgs::msg::MarkerArray ObstacleStopPlannerDebugNode::makeVisualiza
   }
 
   if (!collision_polygons_.empty()) {
-    auto marker = createDefaultMarker(
-      "map", current_time, "collision_polygons", 0, visualization_msgs::msg::Marker::LINE_LIST,
-      createMarkerScale(0.05, 0.0, 0.0), createMarkerColor(1.0, 0.0, 0.0, 0.999));
-
+    visualization_msgs::Marker marker;
+    marker.header.frame_id = "map";
+    marker.header.stamp = current_time;
+    marker.ns = "collision_polygons";
+    marker.id = 0;
+    marker.lifetime = ros::Duration(0.5);
+    marker.type = visualization_msgs::Marker::LINE_LIST;
+    marker.action = visualization_msgs::Marker::ADD;
+    marker.pose.position.x = 0.0;
+    marker.pose.position.y = 0.0;
+    marker.pose.position.z = 0.0;
+    marker.pose.orientation.x = 0.0;
+    marker.pose.orientation.y = 0.0;
+    marker.pose.orientation.z = 0.0;
+    marker.pose.orientation.w = 1.0;
+    marker.scale.x = 0.05;
+    marker.scale.y = 0.0;
+    marker.scale.z = 0.0;
+    marker.color.a = 0.999;  // Don't forget to set the alpha!
+    marker.color.r = 1.0;
+    marker.color.g = 0.0;
+    marker.color.b = 0.0;
     for (size_t i = 0; i < collision_polygons_.size(); ++i) {
       for (size_t j = 0; j < collision_polygons_.at(i).size(); ++j) {
         {
-          const auto & p = collision_polygons_.at(i).at(j);
-          marker.points.push_back(createPoint(p.x(), p.y(), p.z()));
+          geometry_msgs::Point point;
+          point.x = collision_polygons_.at(i).at(j).x();
+          point.y = collision_polygons_.at(i).at(j).y();
+          point.z = collision_polygons_.at(i).at(j).z();
+          marker.points.push_back(point);
         }
         if (j + 1 == collision_polygons_.at(i).size()) {
-          const auto & p = collision_polygons_.at(i).at(0);
-          marker.points.push_back(createPoint(p.x(), p.y(), p.z()));
+          geometry_msgs::Point point;
+          point.x = collision_polygons_.at(i).at(0).x();
+          point.y = collision_polygons_.at(i).at(0).y();
+          point.z = collision_polygons_.at(i).at(0).z();
+          marker.points.push_back(point);
+
         } else {
-          const auto & p = collision_polygons_.at(i).at(j + 1);
-          marker.points.push_back(createPoint(p.x(), p.y(), p.z()));
+          geometry_msgs::Point point;
+          point.x = collision_polygons_.at(i).at(j + 1).x();
+          point.y = collision_polygons_.at(i).at(j + 1).y();
+          point.z = collision_polygons_.at(i).at(j + 1).z();
+          marker.points.push_back(point);
         }
       }
     }
@@ -211,23 +236,50 @@ visualization_msgs::msg::MarkerArray ObstacleStopPlannerDebugNode::makeVisualiza
   }
 
   if (!slow_down_range_polygons_.empty()) {
-    auto marker = createDefaultMarker(
-      "map", current_time, "slow_down_detection_polygons", 0,
-      visualization_msgs::msg::Marker::LINE_LIST, createMarkerScale(0.01, 0.0, 0.0),
-      createMarkerColor(0.0, 1.0, 0.0, 0.999));
-
+    visualization_msgs::Marker marker;
+    marker.header.frame_id = "map";
+    marker.header.stamp = current_time;
+    marker.ns = "slow_down_detection_polygons";
+    marker.id = 0;
+    marker.lifetime = ros::Duration(0.5);
+    marker.type = visualization_msgs::Marker::LINE_LIST;
+    marker.action = visualization_msgs::Marker::ADD;
+    marker.pose.position.x = 0.0;
+    marker.pose.position.y = 0.0;
+    marker.pose.position.z = 0.0;
+    marker.pose.orientation.x = 0.0;
+    marker.pose.orientation.y = 0.0;
+    marker.pose.orientation.z = 0.0;
+    marker.pose.orientation.w = 1.0;
+    marker.scale.x = 0.01;
+    marker.scale.y = 0.0;
+    marker.scale.z = 0.0;
+    marker.color.a = 0.999;  // Don't forget to set the alpha!
+    marker.color.r = 0.0;
+    marker.color.g = 1.0;
+    marker.color.b = 0.0;
     for (size_t i = 0; i < slow_down_range_polygons_.size(); ++i) {
       for (size_t j = 0; j < slow_down_range_polygons_.at(i).size(); ++j) {
         {
-          const auto & p = slow_down_range_polygons_.at(i).at(j);
-          marker.points.push_back(createPoint(p.x(), p.y(), p.z()));
+          geometry_msgs::Point point;
+          point.x = slow_down_range_polygons_.at(i).at(j).x();
+          point.y = slow_down_range_polygons_.at(i).at(j).y();
+          point.z = slow_down_range_polygons_.at(i).at(j).z();
+          marker.points.push_back(point);
         }
         if (j + 1 == slow_down_range_polygons_.at(i).size()) {
-          const auto & p = slow_down_range_polygons_.at(i).at(0);
-          marker.points.push_back(createPoint(p.x(), p.y(), p.z()));
+          geometry_msgs::Point point;
+          point.x = slow_down_range_polygons_.at(i).at(0).x();
+          point.y = slow_down_range_polygons_.at(i).at(0).y();
+          point.z = slow_down_range_polygons_.at(i).at(0).z();
+          marker.points.push_back(point);
+
         } else {
-          const auto & p = slow_down_range_polygons_.at(i).at(j + 1);
-          marker.points.push_back(createPoint(p.x(), p.y(), p.z()));
+          geometry_msgs::Point point;
+          point.x = slow_down_range_polygons_.at(i).at(j + 1).x();
+          point.y = slow_down_range_polygons_.at(i).at(j + 1).y();
+          point.z = slow_down_range_polygons_.at(i).at(j + 1).z();
+          marker.points.push_back(point);
         }
       }
     }
@@ -235,22 +287,50 @@ visualization_msgs::msg::MarkerArray ObstacleStopPlannerDebugNode::makeVisualiza
   }
 
   if (!slow_down_polygons_.empty()) {
-    auto marker = createDefaultMarker(
-      "map", current_time, "slow_down_polygons", 0, visualization_msgs::msg::Marker::LINE_LIST,
-      createMarkerScale(0.05, 0.0, 0.0), createMarkerColor(1.0, 1.0, 0.0, 0.999));
-
+    visualization_msgs::Marker marker;
+    marker.header.frame_id = "map";
+    marker.header.stamp = current_time;
+    marker.ns = "slow_down_polygons";
+    marker.id = 0;
+    marker.lifetime = ros::Duration(0.5);
+    marker.type = visualization_msgs::Marker::LINE_LIST;
+    marker.action = visualization_msgs::Marker::ADD;
+    marker.pose.position.x = 0.0;
+    marker.pose.position.y = 0.0;
+    marker.pose.position.z = 0.0;
+    marker.pose.orientation.x = 0.0;
+    marker.pose.orientation.y = 0.0;
+    marker.pose.orientation.z = 0.0;
+    marker.pose.orientation.w = 1.0;
+    marker.scale.x = 0.05;
+    marker.scale.y = 0.0;
+    marker.scale.z = 0.0;
+    marker.color.a = 0.999;  // Don't forget to set the alpha!
+    marker.color.r = 1.0;
+    marker.color.g = 1.0;
+    marker.color.b = 0.0;
     for (size_t i = 0; i < slow_down_polygons_.size(); ++i) {
       for (size_t j = 0; j < slow_down_polygons_.at(i).size(); ++j) {
         {
-          const auto & p = slow_down_polygons_.at(i).at(j);
-          marker.points.push_back(createPoint(p.x(), p.y(), p.z()));
+          geometry_msgs::Point point;
+          point.x = slow_down_polygons_.at(i).at(j).x();
+          point.y = slow_down_polygons_.at(i).at(j).y();
+          point.z = slow_down_polygons_.at(i).at(j).z();
+          marker.points.push_back(point);
         }
         if (j + 1 == slow_down_polygons_.at(i).size()) {
-          const auto & p = slow_down_polygons_.at(i).at(0);
-          marker.points.push_back(createPoint(p.x(), p.y(), p.z()));
+          geometry_msgs::Point point;
+          point.x = slow_down_polygons_.at(i).at(0).x();
+          point.y = slow_down_polygons_.at(i).at(0).y();
+          point.z = slow_down_polygons_.at(i).at(0).z();
+          marker.points.push_back(point);
+
         } else {
-          const auto & p = slow_down_polygons_.at(i).at(j + 1);
-          marker.points.push_back(createPoint(p.x(), p.y(), p.z()));
+          geometry_msgs::Point point;
+          point.x = slow_down_polygons_.at(i).at(j + 1).x();
+          point.y = slow_down_polygons_.at(i).at(j + 1).y();
+          point.z = slow_down_polygons_.at(i).at(j + 1).z();
+          marker.points.push_back(point);
         }
       }
     }
@@ -258,70 +338,248 @@ visualization_msgs::msg::MarkerArray ObstacleStopPlannerDebugNode::makeVisualiza
   }
 
   if (stop_pose_ptr_ != nullptr) {
-    const auto p = calcOffsetPose(*stop_pose_ptr_, base_link2front_, 0.0, 0.0);
-    const auto markers = createStopVirtualWallMarker(p, "obstacle on the path", current_time, 0);
-    appendMarkerArray(markers, &msg);
+    visualization_msgs::Marker marker;
+    marker.header.frame_id = "map";
+    marker.header.stamp = current_time;
+    marker.ns = "virtual_wall/stop";
+    marker.id = 0;
+    marker.lifetime = ros::Duration(0.5);
+    marker.type = visualization_msgs::Marker::CUBE;
+    marker.action = visualization_msgs::Marker::ADD;
+    tf2::Transform tf_map2base_link;
+    tf2::fromMsg(*stop_pose_ptr_, tf_map2base_link);
+    tf2::Transform tf_map2front = tf_map2base_link * tf_base_link2front;
+    tf2::toMsg(tf_map2front, marker.pose);
+    marker.pose.position.z += 1.0;
+    marker.scale.x = 0.1;
+    marker.scale.y = 5.0;
+    marker.scale.z = 2.0;
+    marker.color.a = 0.5;  // Don't forget to set the alpha!
+    marker.color.r = 1.0;
+    marker.color.g = 0.0;
+    marker.color.b = 0.0;
+    msg.markers.push_back(marker);
   }
 
-  if (slow_down_start_pose_ptr_ != nullptr && stop_pose_ptr_ == nullptr) {
-    const auto p = calcOffsetPose(*slow_down_start_pose_ptr_, base_link2front_, 0.0, 0.0);
-
-    {
-      const auto markers =
-        createSlowDownVirtualWallMarker(p, "obstacle beside the path", current_time, 0);
-      appendMarkerArray(markers, &msg);
-    }
-
-    {
-      auto markers = createSlowDownVirtualWallMarker(p, "slow down\nstart", current_time, 1);
-      markers.markers.front().ns = "slow_down_start_virtual_wall";
-      markers.markers.back().ns = "slow_down_start_factor_text";
-      appendMarkerArray(markers, &msg);
-    }
+  if (stop_pose_ptr_ != nullptr) {
+    visualization_msgs::Marker marker;
+    marker.header.frame_id = "map";
+    marker.header.stamp = current_time;
+    marker.ns = "factor_text/stop";
+    marker.id = 0;
+    marker.lifetime = ros::Duration(0.5);
+    marker.type = visualization_msgs::Marker::TEXT_VIEW_FACING;
+    marker.action = visualization_msgs::Marker::ADD;
+    tf2::Transform tf_map2base_link;
+    tf2::fromMsg(*stop_pose_ptr_, tf_map2base_link);
+    tf2::Transform tf_map2front = tf_map2base_link * tf_base_link2front;
+    tf2::toMsg(tf_map2front, marker.pose);
+    marker.pose.position.z += 2.0;
+    marker.scale.x = 0.0;
+    marker.scale.y = 0.0;
+    marker.scale.z = 1.0;
+    marker.color.a = 0.999;  // Don't forget to set the alpha!
+    marker.color.r = 1.0;
+    marker.color.g = 1.0;
+    marker.color.b = 1.0;
+    marker.text = "obstacle";
+    msg.markers.push_back(marker);
   }
 
-  if (slow_down_end_pose_ptr_ != nullptr && stop_pose_ptr_ == nullptr) {
-    const auto p = calcOffsetPose(*slow_down_end_pose_ptr_, base_link2front_, 0.0, 0.0);
-    auto markers = createSlowDownVirtualWallMarker(p, "slow down\nend", current_time, 2);
-    markers.markers.front().ns = "slow_down_end_virtual_wall";
-    markers.markers.back().ns = "slow_down_end_factor_text";
-    appendMarkerArray(markers, &msg);
+  if (slow_down_start_pose_ptr_ != nullptr) {
+    visualization_msgs::Marker marker;
+    marker.header.frame_id = "map";
+    marker.header.stamp = current_time;
+    marker.ns = "virtual_wall/slow_down_start";
+    marker.id = 0;
+    marker.lifetime = ros::Duration(0.5);
+    marker.type = visualization_msgs::Marker::CUBE;
+    marker.action = visualization_msgs::Marker::ADD;
+    tf2::Transform tf_map2base_link;
+    tf2::fromMsg(*slow_down_start_pose_ptr_, tf_map2base_link);
+    tf2::Transform tf_map2front = tf_map2base_link * tf_base_link2front;
+    tf2::toMsg(tf_map2front, marker.pose);
+    marker.pose.position.z += 1.0;
+    marker.scale.x = 0.1;
+    marker.scale.y = 5.0;
+    marker.scale.z = 2.0;
+    marker.color.a = 0.5;  // Don't forget to set the alpha!
+    marker.color.r = 1.0;
+    marker.color.g = 1.0;
+    marker.color.b = 0.0;
+    msg.markers.push_back(marker);
   }
 
-  if (stop_obstacle_point_ptr_ != nullptr) {
-    auto marker = createDefaultMarker(
-      "map", current_time, "stop_obstacle_point", 0, visualization_msgs::msg::Marker::SPHERE,
-      createMarkerScale(0.25, 0.25, 0.25), createMarkerColor(1.0, 0.0, 0.0, 0.999));
-    marker.pose.position = *stop_obstacle_point_ptr_;
+  if (slow_down_start_pose_ptr_ != nullptr) {
+    visualization_msgs::Marker marker;
+    marker.header.frame_id = "map";
+    marker.header.stamp = current_time;
+    marker.ns = "factor_text/slow_down_start";
+    marker.id = 0;
+    marker.lifetime = ros::Duration(0.5);
+    marker.type = visualization_msgs::Marker::TEXT_VIEW_FACING;
+    marker.action = visualization_msgs::Marker::ADD;
+    tf2::Transform tf_map2base_link;
+    tf2::fromMsg(*slow_down_start_pose_ptr_, tf_map2base_link);
+    tf2::Transform tf_map2front = tf_map2base_link * tf_base_link2front;
+    tf2::toMsg(tf_map2front, marker.pose);
+    marker.pose.position.z += 2.0;
+    marker.scale.x = 0.0;
+    marker.scale.y = 0.0;
+    marker.scale.z = 1.0;
+    marker.color.a = 0.999;  // Don't forget to set the alpha!
+    marker.color.r = 1.0;
+    marker.color.g = 1.0;
+    marker.color.b = 1.0;
+    marker.text = "slow down\nstart";
+    msg.markers.push_back(marker);
+  }
+
+  if (slow_down_end_pose_ptr_ != nullptr) {
+    visualization_msgs::Marker marker;
+    marker.header.frame_id = "map";
+    marker.header.stamp = current_time;
+    marker.ns = "virtual_wall/slow_down_end";
+    marker.id = 0;
+    marker.lifetime = ros::Duration(0.5);
+    marker.type = visualization_msgs::Marker::CUBE;
+    marker.action = visualization_msgs::Marker::ADD;
+    tf2::Transform tf_map2base_link;
+    tf2::fromMsg(*slow_down_end_pose_ptr_, tf_map2base_link);
+    tf2::Transform tf_map2front = tf_map2base_link * tf_base_link2front;
+    tf2::toMsg(tf_map2front, marker.pose);
+    marker.pose.position.z += 1.0;
+    marker.scale.x = 0.1;
+    marker.scale.y = 5.0;
+    marker.scale.z = 2.0;
+    marker.color.a = 0.5;  // Don't forget to set the alpha!
+    marker.color.r = 1.0;
+    marker.color.g = 1.0;
+    marker.color.b = 0.0;
+    msg.markers.push_back(marker);
+  }
+
+  if (slow_down_end_pose_ptr_ != nullptr) {
+    visualization_msgs::Marker marker;
+    marker.header.frame_id = "map";
+    marker.header.stamp = current_time;
+    marker.ns = "factor_text/slow_down_end";
+    marker.id = 0;
+    marker.lifetime = ros::Duration(0.5);
+    marker.type = visualization_msgs::Marker::TEXT_VIEW_FACING;
+    marker.action = visualization_msgs::Marker::ADD;
+    tf2::Transform tf_map2base_link;
+    tf2::fromMsg(*slow_down_end_pose_ptr_, tf_map2base_link);
+    tf2::Transform tf_map2front = tf_map2base_link * tf_base_link2front;
+    tf2::toMsg(tf_map2front, marker.pose);
+    marker.pose.position.z += 2.0;
+    marker.scale.x = 0.0;
+    marker.scale.y = 0.0;
+    marker.scale.z = 1.0;
+    marker.color.a = 0.999;  // Don't forget to set the alpha!
+    marker.color.r = 1.0;
+    marker.color.g = 1.0;
+    marker.color.b = 1.0;
+    marker.text = "slow down\nend";
     msg.markers.push_back(marker);
   }
 
   if (stop_obstacle_point_ptr_ != nullptr) {
-    auto marker = createDefaultMarker(
-      "map", current_time, "stop_obstacle_text", 0,
-      visualization_msgs::msg::Marker::TEXT_VIEW_FACING, createMarkerScale(0.0, 0.0, 1.0),
-      createMarkerColor(1.0, 1.0, 1.0, 0.999));
+    visualization_msgs::Marker marker;
+    marker.header.frame_id = "map";
+    marker.header.stamp = current_time;
+    marker.ns = "stop_obstacle_point";
+    marker.id = 0;
+    marker.lifetime = ros::Duration(0.5);
+    marker.type = visualization_msgs::Marker::SPHERE;
+    marker.action = visualization_msgs::Marker::ADD;
+    marker.pose.position = *stop_obstacle_point_ptr_;
+    marker.pose.orientation.x = 0.0;
+    marker.pose.orientation.y = 0.0;
+    marker.pose.orientation.z = 0.0;
+    marker.pose.orientation.w = 1.0;
+    marker.scale.x = 0.25;
+    marker.scale.y = 0.25;
+    marker.scale.z = 0.25;
+    marker.color.a = 0.999;  // Don't forget to set the alpha!
+    marker.color.r = 1.0;
+    marker.color.g = 0.0;
+    marker.color.b = 0.0;
+    msg.markers.push_back(marker);
+  }
+
+  if (stop_obstacle_point_ptr_ != nullptr) {
+    visualization_msgs::Marker marker;
+    marker.header.frame_id = "map";
+    marker.header.stamp = current_time;
+    marker.ns = "stop_obstacle_text";
+    marker.id = 0;
+    marker.lifetime = ros::Duration(0.5);
+    marker.type = visualization_msgs::Marker::TEXT_VIEW_FACING;
+    marker.action = visualization_msgs::Marker::ADD;
     marker.pose.position = *stop_obstacle_point_ptr_;
     marker.pose.position.z += 2.0;
+    marker.pose.orientation.x = 0.0;
+    marker.pose.orientation.y = 0.0;
+    marker.pose.orientation.z = 0.0;
+    marker.pose.orientation.w = 1.0;
+    marker.scale.x = 0.0;
+    marker.scale.y = 0.0;
+    marker.scale.z = 1.0;
+    marker.color.a = 0.999;  // Don't forget to set the alpha!
+    marker.color.r = 1.0;
+    marker.color.g = 1.0;
+    marker.color.b = 1.0;
     marker.text = "!";
     msg.markers.push_back(marker);
   }
 
   if (slow_down_obstacle_point_ptr_ != nullptr) {
-    auto marker = createDefaultMarker(
-      "map", current_time, "slow_down_obstacle_point", 0, visualization_msgs::msg::Marker::SPHERE,
-      createMarkerScale(0.25, 0.25, 0.25), createMarkerColor(1.0, 0.0, 0.0, 0.999));
+    visualization_msgs::Marker marker;
+    marker.header.frame_id = "map";
+    marker.header.stamp = current_time;
+    marker.ns = "slow_down_obstacle_point";
+    marker.id = 0;
+    marker.lifetime = ros::Duration(0.5);
+    marker.type = visualization_msgs::Marker::SPHERE;
+    marker.action = visualization_msgs::Marker::ADD;
     marker.pose.position = *slow_down_obstacle_point_ptr_;
+    marker.pose.orientation.x = 0.0;
+    marker.pose.orientation.y = 0.0;
+    marker.pose.orientation.z = 0.0;
+    marker.pose.orientation.w = 1.0;
+    marker.scale.x = 0.25;
+    marker.scale.y = 0.25;
+    marker.scale.z = 0.25;
+    marker.color.a = 0.999;  // Don't forget to set the alpha!
+    marker.color.r = 1.0;
+    marker.color.g = 0.0;
+    marker.color.b = 0.0;
     msg.markers.push_back(marker);
   }
 
   if (slow_down_obstacle_point_ptr_ != nullptr) {
-    auto marker = createDefaultMarker(
-      "map", current_time, "slow_down_obstacle_text", 0,
-      visualization_msgs::msg::Marker::TEXT_VIEW_FACING, createMarkerScale(0.0, 0.0, 1.0),
-      createMarkerColor(1.0, 1.0, 1.0, 0.999));
+    visualization_msgs::Marker marker;
+    marker.header.frame_id = "map";
+    marker.header.stamp = current_time;
+    marker.ns = "slow_down_obstacle_text";
+    marker.id = 0;
+    marker.lifetime = ros::Duration(0.5);
+    marker.type = visualization_msgs::Marker::TEXT_VIEW_FACING;
+    marker.action = visualization_msgs::Marker::ADD;
     marker.pose.position = *slow_down_obstacle_point_ptr_;
     marker.pose.position.z += 2.0;
+    marker.pose.orientation.x = 0.0;
+    marker.pose.orientation.y = 0.0;
+    marker.pose.orientation.z = 0.0;
+    marker.pose.orientation.w = 1.0;
+    marker.scale.x = 0.0;
+    marker.scale.y = 0.0;
+    marker.scale.z = 1.0;
+    marker.color.a = 0.999;  // Don't forget to set the alpha!
+    marker.color.r = 1.0;
+    marker.color.g = 1.0;
+    marker.color.b = 1.0;
     marker.text = "!";
     msg.markers.push_back(marker);
   }
@@ -329,17 +587,17 @@ visualization_msgs::msg::MarkerArray ObstacleStopPlannerDebugNode::makeVisualiza
   return msg;
 }
 
-autoware_planning_msgs::msg::StopReasonArray ObstacleStopPlannerDebugNode::makeStopReasonArray()
+autoware_planning_msgs::StopReasonArray ObstacleStopPlannerDebugNode::makeStopReasonArray()
 {
-  // create header
-  std_msgs::msg::Header header;
+  //create header
+  std_msgs::Header header;
   header.frame_id = "map";
-  header.stamp = node_->now();
+  header.stamp = ros::Time::now();
 
-  // create stop reason stamped
-  autoware_planning_msgs::msg::StopReason stop_reason_msg;
-  stop_reason_msg.reason = autoware_planning_msgs::msg::StopReason::OBSTACLE_STOP;
-  autoware_planning_msgs::msg::StopFactor stop_factor;
+  //create stop reason stamped
+  autoware_planning_msgs::StopReason stop_reason_msg;
+  stop_reason_msg.reason = autoware_planning_msgs::StopReason::OBSTACLE_STOP;
+  autoware_planning_msgs::StopFactor stop_factor;
 
   if (stop_pose_ptr_ != nullptr) {
     stop_factor.stop_pose = *stop_pose_ptr_;
@@ -349,8 +607,8 @@ autoware_planning_msgs::msg::StopReasonArray ObstacleStopPlannerDebugNode::makeS
     stop_reason_msg.stop_factors.emplace_back(stop_factor);
   }
 
-  // create stop reason array
-  autoware_planning_msgs::msg::StopReasonArray stop_reason_array;
+  //create stop reason array
+  autoware_planning_msgs::StopReasonArray stop_reason_array;
   stop_reason_array.header = header;
   stop_reason_array.stop_reasons.emplace_back(stop_reason_msg);
   return stop_reason_array;

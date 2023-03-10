@@ -1,39 +1,34 @@
-// Copyright 2019 Autoware Foundation. All rights reserved.
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2019 Autoware Foundation. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
-#include "lane_change_planner/state/executing_lane_change.hpp"
+#include <lane_change_planner/data_manager.h>
+#include <lane_change_planner/route_handler.h>
+#include <lane_change_planner/state/common_functions.h>
+#include <lane_change_planner/state/executing_lane_change.h>
+#include <lane_change_planner/utilities.h>
 
-#include "lane_change_planner/data_manager.hpp"
-#include "lane_change_planner/route_handler.hpp"
-#include "lane_change_planner/state/common_functions.hpp"
-#include "lane_change_planner/utilities.hpp"
-
-#include <lanelet2_extension/utility/utilities.hpp>
-
+#include <lanelet2_extension/utility/utilities.h>
 #include <tf2/utils.h>
-
-#include <algorithm>
-#include <memory>
 
 namespace lane_change_planner
 {
 ExecutingLaneChangeState::ExecutingLaneChangeState(
   const Status & status, const std::shared_ptr<DataManager> & data_manager_ptr,
-  const std::shared_ptr<RouteHandler> & route_handler_ptr, const rclcpp::Logger & logger,
-  const rclcpp::Clock::SharedPtr & clock)
-: StateBase(status, data_manager_ptr, route_handler_ptr, logger, clock)
+  const std::shared_ptr<RouteHandler> & route_handler_ptr)
+: StateBase(status, data_manager_ptr, route_handler_ptr)
 {
 }
 
@@ -50,11 +45,12 @@ void ExecutingLaneChangeState::entry()
 
   // get start arclength
   const auto start = data_manager_ptr_->getCurrentSelfPose();
-  const auto arclength_start = lanelet::utils::getArcCoordinates(target_lanes_, start.pose);
+  const auto arclength_start =
+    lanelet::utils::getArcCoordinates(target_lanes_, start.pose);
   start_distance_ = arclength_start.length;
 }
 
-autoware_planning_msgs::msg::PathWithLaneId ExecutingLaneChangeState::getPath() const
+autoware_planning_msgs::PathWithLaneId ExecutingLaneChangeState::getPath() const
 {
   return status_.lane_change_path.path;
 }
@@ -119,9 +115,8 @@ bool ExecutingLaneChangeState::isAbortConditionSatisfied() const
   lanelet::ConstLanelet closest_lanelet;
   if (!lanelet::utils::query::getClosestLanelet(
         original_lanes_, current_pose_.pose, &closest_lanelet)) {
-    RCLCPP_ERROR_THROTTLE(
-      logger_, *clock_, 1000,
-      "Failed to find closest lane! Lane change aborting function is not working!");
+    ROS_ERROR_THROTTLE(
+      1, "Failed to find closest lane! Lane change aborting function is not working!");
     return false;
   }
 
@@ -138,8 +133,7 @@ bool ExecutingLaneChangeState::isAbortConditionSatisfied() const
 
     is_path_safe = state_machine::common_functions::isLaneChangePathSafe(
       path.path, original_lanes_, check_lanes, dynamic_objects_, current_pose_.pose,
-      current_twist_->twist, ros_parameters_, false, status_.lane_change_path.acceleration, logger_,
-      clock_);
+      current_twist_->twist, ros_parameters_, false, status_.lane_change_path.acceleration);
   }
 
   // check vehicle velocity thresh
@@ -186,9 +180,8 @@ bool ExecutingLaneChangeState::isAbortConditionSatisfied() const
     if (is_distance_small && is_angle_diff_small) {
       return true;
     }
-    RCLCPP_WARN_STREAM_THROTTLE(
-      logger_, *clock_, 1000,
-      "DANGER!!! Path is not safe anymore, but it is too late to abort! Please be cautious");
+    ROS_WARN_STREAM_THROTTLE(
+      1, "DANGER!!! Path is not safe anymore, but it is too late to abort! Please be cautious");
   }
 
   return false;

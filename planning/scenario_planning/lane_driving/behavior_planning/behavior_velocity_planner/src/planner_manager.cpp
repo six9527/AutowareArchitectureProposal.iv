@@ -1,29 +1,25 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2020 Tier IV, Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
-#include "behavior_velocity_planner/planner_manager.hpp"
-
+#include <behavior_velocity_planner/planner_manager.h>
 #include <boost/format.hpp>
 
-#include <memory>
-#include <string>
-
-namespace behavior_velocity_planner
-{
 namespace
 {
-std::string jsonDumpsPose(const geometry_msgs::msg::Pose & pose)
+std::string jsonDumpsPose(const geometry_msgs::Pose & pose)
 {
   const std::string json_dumps_pose =
     (boost::format(
@@ -34,12 +30,12 @@ std::string jsonDumpsPose(const geometry_msgs::msg::Pose & pose)
   return json_dumps_pose;
 }
 
-diagnostic_msgs::msg::DiagnosticStatus makeStopReasonDiag(
-  const std::string stop_reason, const geometry_msgs::msg::Pose & stop_pose)
+diagnostic_msgs::DiagnosticStatus makeStopReasonDiag(
+  const std::string stop_reason, const geometry_msgs::Pose & stop_pose)
 {
-  diagnostic_msgs::msg::DiagnosticStatus stop_reason_diag;
-  diagnostic_msgs::msg::KeyValue stop_reason_diag_kv;
-  stop_reason_diag.level = diagnostic_msgs::msg::DiagnosticStatus::OK;
+  diagnostic_msgs::DiagnosticStatus stop_reason_diag;
+  diagnostic_msgs::KeyValue stop_reason_diag_kv;
+  stop_reason_diag.level = diagnostic_msgs::DiagnosticStatus::OK;
   stop_reason_diag.name = "stop_reason";
   stop_reason_diag.message = stop_reason;
   stop_reason_diag_kv.key = "stop_pose";
@@ -55,11 +51,11 @@ void BehaviorVelocityPlannerManager::launchSceneModule(
   scene_manager_ptrs_.push_back(scene_module_manager_ptr);
 }
 
-autoware_auto_planning_msgs::msg::PathWithLaneId BehaviorVelocityPlannerManager::planPathVelocity(
+autoware_planning_msgs::PathWithLaneId BehaviorVelocityPlannerManager::planPathVelocity(
   const std::shared_ptr<const PlannerData> & planner_data,
-  const autoware_auto_planning_msgs::msg::PathWithLaneId & input_path_msg)
+  const autoware_planning_msgs::PathWithLaneId & input_path_msg)
 {
-  autoware_auto_planning_msgs::msg::PathWithLaneId output_path_msg = input_path_msg;
+  autoware_planning_msgs::PathWithLaneId output_path_msg = input_path_msg;
 
   int first_stop_path_point_index = static_cast<int>(output_path_msg.points.size() - 1);
   std::string stop_reason_msg("path_end");
@@ -83,8 +79,7 @@ autoware_auto_planning_msgs::msg::PathWithLaneId BehaviorVelocityPlannerManager:
   return output_path_msg;
 }
 
-diagnostic_msgs::msg::DiagnosticStatus BehaviorVelocityPlannerManager::getStopReasonDiag()
+diagnostic_msgs::DiagnosticStatus BehaviorVelocityPlannerManager::getStopReasonDiag()
 {
   return stop_reason_diag_;
 }
-}  // namespace behavior_velocity_planner

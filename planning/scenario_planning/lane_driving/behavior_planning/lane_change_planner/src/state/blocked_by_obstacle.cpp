@@ -1,40 +1,34 @@
-// Copyright 2019 Autoware Foundation. All rights reserved.
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2019 Autoware Foundation. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
-#include "lane_change_planner/state/blocked_by_obstacle.hpp"
+#include <lane_change_planner/data_manager.h>
+#include <lane_change_planner/route_handler.h>
+#include <lane_change_planner/state/blocked_by_obstacle.h>
+#include <lane_change_planner/state/common_functions.h>
+#include <lane_change_planner/utilities.h>
 
-#include "lane_change_planner/data_manager.hpp"
-#include "lane_change_planner/route_handler.hpp"
-#include "lane_change_planner/state/common_functions.hpp"
-#include "lane_change_planner/utilities.hpp"
-
-#include <lanelet2_extension/utility/message_conversion.hpp>
-#include <lanelet2_extension/utility/utilities.hpp>
-
-#include <algorithm>
-#include <limits>
-#include <memory>
-#include <vector>
+#include <lanelet2_extension/utility/message_conversion.h>
+#include <lanelet2_extension/utility/utilities.h>
 
 namespace lane_change_planner
 {
 BlockedByObstacleState::BlockedByObstacleState(
   const Status & status, const std::shared_ptr<DataManager> & data_manager_ptr,
-  const std::shared_ptr<RouteHandler> & route_handler_ptr, const rclcpp::Logger & logger,
-  const rclcpp::Clock::SharedPtr & clock)
-: StateBase(status, data_manager_ptr, route_handler_ptr, logger, clock)
+  const std::shared_ptr<RouteHandler> & route_handler_ptr)
+: StateBase(status, data_manager_ptr, route_handler_ptr)
 {
 }
 
@@ -50,7 +44,7 @@ void BlockedByObstacleState::entry()
   current_lanes_ = route_handler_ptr_->getLaneletsFromIds(status_.lane_follow_lane_ids);
 }
 
-autoware_planning_msgs::msg::PathWithLaneId BlockedByObstacleState::getPath() const
+autoware_planning_msgs::PathWithLaneId BlockedByObstacleState::getPath() const
 {
   return status_.lane_follow_path;
 }
@@ -72,7 +66,7 @@ void BlockedByObstacleState::update()
   // update lanes
   {
     if (!route_handler_ptr_->getClosestLaneletWithinRoute(current_pose_.pose, &current_lane)) {
-      RCLCPP_ERROR(logger_, "failed to find closest lanelet within route!!!");
+      ROS_ERROR("failed to find closest lanelet within route!!!");
       return;
     }
     lanelet::ConstLanelet right_lane;
@@ -87,6 +81,10 @@ void BlockedByObstacleState::update()
         left_lane, current_pose_.pose, backward_path_length, forward_path_length);
     }
   }
+
+  const double minimum_lane_change_length = ros_parameters_.minimum_lane_change_length;
+  const double lane_change_prepare_duration = ros_parameters_.lane_change_prepare_duration;
+  const double lane_changing_duration = ros_parameters_.lane_changing_duration;
 
   // update lane_follow_path
   {
@@ -143,7 +141,7 @@ void BlockedByObstacleState::update()
     LaneChangePath selected_path;
     if (state_machine::common_functions::selectSafePath(
           valid_paths, current_lanes_, check_lanes, dynamic_objects_, current_pose_.pose,
-          current_twist_->twist, ros_parameters_, &selected_path, logger_, clock_)) {
+          current_twist_->twist, ros_parameters_, &selected_path)) {
       found_safe_path_ = true;
     }
     debug_data_.selected_path = selected_path.path;
@@ -180,7 +178,7 @@ void BlockedByObstacleState::update()
     LaneChangePath selected_path;
     if (state_machine::common_functions::selectSafePath(
           valid_paths, current_lanes_, check_lanes, dynamic_objects_, current_pose_.pose,
-          current_twist_->twist, ros_parameters_, &selected_path, logger_, clock_)) {
+          current_twist_->twist, ros_parameters_, &selected_path)) {
       found_safe_path_ = true;
     }
     debug_data_.selected_path = selected_path.path;
@@ -217,8 +215,8 @@ State BlockedByObstacleState::getNextState() const
   return State::BLOCKED_BY_OBSTACLE;
 }
 
-autoware_planning_msgs::msg::PathWithLaneId BlockedByObstacleState::setStopPointFromObstacle(
-  const autoware_planning_msgs::msg::PathWithLaneId & path)
+autoware_planning_msgs::PathWithLaneId BlockedByObstacleState::setStopPointFromObstacle(
+  const autoware_planning_msgs::PathWithLaneId & path)
 {
   const auto blocking_objects = getBlockingObstacles();
 
@@ -231,7 +229,7 @@ autoware_planning_msgs::msg::PathWithLaneId BlockedByObstacleState::setStopPoint
   }
 
   // find the closest static obstacle in front of ego vehicle
-  autoware_perception_msgs::msg::DynamicObject closest_object;
+  autoware_perception_msgs::DynamicObject closest_object;
   bool found_closest_object = false;
   double closest_distance = std::numeric_limits<double>::max();
   for (const auto & object : blocking_objects) {
@@ -254,7 +252,7 @@ autoware_planning_msgs::msg::PathWithLaneId BlockedByObstacleState::setStopPoint
   double stop_insert_length =
     closest_distance - ros_parameters_.minimum_lane_change_length - ros_parameters_.base_link2front;
   stop_insert_length = std::max(stop_insert_length, 0.0);
-  autoware_planning_msgs::msg::PathWithLaneId modified_path = path;
+  autoware_planning_msgs::PathWithLaneId modified_path = path;
   debug_data_.stop_factor_point = closest_object.state.pose_covariance.pose.position;
   debug_data_.stop_point = util::insertStopPoint(stop_insert_length, &modified_path);
   return modified_path;
@@ -264,7 +262,7 @@ bool BlockedByObstacleState::isOutOfCurrentLanes() const
 {
   lanelet::ConstLanelet closest_lane;
   if (!route_handler_ptr_->getClosestLaneletWithinRoute(current_pose_.pose, &closest_lane)) {
-    RCLCPP_ERROR(logger_, "failed to find closest lanelet within route!!!");
+    ROS_ERROR("failed to find closest lanelet within route!!!");
     return true;
   }
   for (const auto & llt : current_lanes_) {
@@ -281,10 +279,10 @@ bool BlockedByObstacleState::isLaneBlocked() const
   return !blocking_objects.empty();
 }
 
-std::vector<autoware_perception_msgs::msg::DynamicObject>
-BlockedByObstacleState::getBlockingObstacles() const
+std::vector<autoware_perception_msgs::DynamicObject> BlockedByObstacleState::getBlockingObstacles()
+  const
 {
-  std::vector<autoware_perception_msgs::msg::DynamicObject> blocking_obstacles;
+  std::vector<autoware_perception_msgs::DynamicObject> blocking_obstacles;
 
   const auto arc = lanelet::utils::getArcCoordinates(current_lanes_, current_pose_.pose);
   constexpr double max_check_distance = 100;
@@ -300,9 +298,9 @@ BlockedByObstacleState::getBlockingObstacles() const
     current_lanes_, arc.length, arc.length + check_distance);
 
   if (polygon.size() < 3) {
-    RCLCPP_WARN_STREAM(
-      logger_, "could not get polygon from lanelet with arc lengths: "
-                 << arc.length << " to " << arc.length + check_distance);
+    ROS_WARN_STREAM(
+      "could not get polygon from lanelet with arc lengths: " << arc.length << " to "
+                                                              << arc.length + check_distance);
     return blocking_obstacles;
   }
 
@@ -328,9 +326,7 @@ bool BlockedByObstacleState::isLaneChangeAvailable() const { return status_.lane
 bool BlockedByObstacleState::hasEnoughDistanceToComeBack(
   const lanelet::ConstLanelets & target_lanes) const
 {
-  if (target_lanes.empty()) {
-    return false;
-  }
+  if (target_lanes.empty()) return false;
   const auto static_objects = getBlockingObstacles();
 
   // make sure that there is at least minimum lane change length after obstacle.

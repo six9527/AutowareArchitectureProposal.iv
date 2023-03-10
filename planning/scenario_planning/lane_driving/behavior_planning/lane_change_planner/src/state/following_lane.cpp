@@ -1,39 +1,33 @@
-// Copyright 2019 Autoware Foundation. All rights reserved.
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2019 Autoware Foundation. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
-#include "lane_change_planner/state/following_lane.hpp"
-
-#include "lane_change_planner/data_manager.hpp"
-#include "lane_change_planner/route_handler.hpp"
-#include "lane_change_planner/state/common_functions.hpp"
-#include "lane_change_planner/utilities.hpp"
-
-#include <lanelet2_extension/utility/message_conversion.hpp>
-#include <lanelet2_extension/utility/utilities.hpp>
-
-#include <algorithm>
-#include <limits>
-#include <memory>
+#include <lane_change_planner/data_manager.h>
+#include <lane_change_planner/route_handler.h>
+#include <lane_change_planner/state/common_functions.h>
+#include <lane_change_planner/state/following_lane.h>
+#include <lane_change_planner/utilities.h>
+#include <lanelet2_extension/utility/message_conversion.h>
+#include <lanelet2_extension/utility/utilities.h>
 
 namespace lane_change_planner
 {
 FollowingLaneState::FollowingLaneState(
   const Status & status, const std::shared_ptr<DataManager> & data_manager_ptr,
-  const std::shared_ptr<RouteHandler> & route_handler_ptr, const rclcpp::Logger & logger,
-  const rclcpp::Clock::SharedPtr & clock)
-: StateBase(status, data_manager_ptr, route_handler_ptr, logger, clock)
+  const std::shared_ptr<RouteHandler> & route_handler_ptr)
+: StateBase(status, data_manager_ptr, route_handler_ptr)
 {
 }
 
@@ -48,7 +42,7 @@ void FollowingLaneState::entry()
   status_.lane_change_ready = false;
 }
 
-autoware_planning_msgs::msg::PathWithLaneId FollowingLaneState::getPath() const
+autoware_planning_msgs::PathWithLaneId FollowingLaneState::getPath() const
 {
   return status_.lane_follow_path;
 }
@@ -71,7 +65,7 @@ void FollowingLaneState::update()
   // update lanes
   {
     if (!route_handler_ptr_->getClosestLaneletWithinRoute(current_pose_.pose, &current_lane)) {
-      RCLCPP_ERROR(logger_, "failed to find closest lanelet within route!!!");
+      ROS_ERROR("failed to find closest lanelet within route!!!");
       return;
     }
     current_lanes_ = route_handler_ptr_->getLaneletSequence(
@@ -92,6 +86,9 @@ void FollowingLaneState::update()
   // update lane_follow_path
   {
     constexpr double check_distance = 100.0;
+    const double lane_change_prepare_duration = ros_parameters_.lane_change_prepare_duration;
+    const double lane_changing_duration = ros_parameters_.lane_changing_duration;
+    const double minimum_lane_change_length = ros_parameters_.minimum_lane_change_length;
     status_.lane_follow_path = route_handler_ptr_->getReferencePath(
       current_lanes_, current_pose_.pose, backward_path_length, forward_path_length,
       ros_parameters_);
@@ -125,7 +122,7 @@ void FollowingLaneState::update()
       LaneChangePath selected_path;
       if (state_machine::common_functions::selectSafePath(
             valid_paths, current_lanes_, check_lanes, dynamic_objects_, current_pose_.pose,
-            current_twist_->twist, ros_parameters_, &selected_path, logger_, clock_)) {
+            current_twist_->twist, ros_parameters_, &selected_path)) {
         found_safe_path = true;
       }
       debug_data_.selected_path = selected_path.path;
@@ -162,11 +159,11 @@ void FollowingLaneState::update()
 State FollowingLaneState::getNextState() const
 {
   if (current_lanes_.empty()) {
-    RCLCPP_ERROR_THROTTLE(logger_, *clock_, 1000, "current lanes empty. Keeping state.");
+    ROS_ERROR_THROTTLE(1, "current lanes empty. Keeping state.");
     return State::FOLLOWING_LANE;
   }
   if (ros_parameters_.enable_blocked_by_obstacle) {
-    if (route_handler_ptr_->isInPreferredLane(current_pose_) && isLaneBlocked(current_lanes_)) {
+    if(route_handler_ptr_->isInPreferredLane(current_pose_) && isLaneBlocked(current_lanes_)){
       return State::BLOCKED_BY_OBSTACLE;
     }
   }
@@ -195,18 +192,18 @@ bool FollowingLaneState::isLaneBlocked(const lanelet::ConstLanelets & lanes) con
     lanelet::utils::getPolygonFromArcLength(lanes, arc.length, arc.length + check_distance);
 
   if (polygon.size() < 3) {
-    RCLCPP_WARN_STREAM(
-      logger_, "could not get polygon from lanelet with arc lengths: "
-                 << arc.length << " to " << arc.length + check_distance);
+    ROS_WARN_STREAM(
+      "could not get polygon from lanelet with arc lengths: " << arc.length << " to "
+                                                              << arc.length + check_distance);
     return false;
   }
 
   for (const auto & obj : dynamic_objects_->objects) {
     if (
-      obj.semantic.type == autoware_perception_msgs::msg::Semantic::CAR ||
-      obj.semantic.type == autoware_perception_msgs::msg::Semantic::TRUCK ||
-      obj.semantic.type == autoware_perception_msgs::msg::Semantic::BUS ||
-      obj.semantic.type == autoware_perception_msgs::msg::Semantic::MOTORBIKE) {
+      obj.semantic.type == autoware_perception_msgs::Semantic::CAR ||
+      obj.semantic.type == autoware_perception_msgs::Semantic::TRUCK ||
+      obj.semantic.type == autoware_perception_msgs::Semantic::BUS ||
+      obj.semantic.type == autoware_perception_msgs::Semantic::MOTORBIKE) {
       const auto velocity = util::l2Norm(obj.state.twist_covariance.twist.linear);
       if (velocity < static_obj_velocity_thresh) {
         const auto position =

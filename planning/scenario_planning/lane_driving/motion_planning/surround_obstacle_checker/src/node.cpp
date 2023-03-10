@@ -1,114 +1,121 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2020 Tier IV, Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
-#include "surround_obstacle_checker/node.hpp"
-
-#include <pcl/common/transforms.h>
-#include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl_conversions/pcl_conversions.h>
+#include <pcl_ros/point_cloud.h>
+#include <pcl_ros/transforms.h>
 #include <tf2_eigen/tf2_eigen.h>
 
-#include <algorithm>
-#include <functional>
-#include <limits>
-#include <memory>
-#include <string>
+#include <surround_obstacle_checker/node.hpp>
 
 #define EIGEN_MPL2_ONLY
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 
-SurroundObstacleCheckerNode::SurroundObstacleCheckerNode(const rclcpp::NodeOptions & node_options)
-: Node("surround_obstacle_checker_node", node_options),
-  tf_buffer_(this->get_clock()),
-  tf_listener_(tf_buffer_),
-  vehicle_info_(vehicle_info_util::VehicleInfoUtil(*this).getVehicleInfo())
+template <class T>
+T waitForParam(const ros::NodeHandle & nh, const std::string & key)
+{
+  T value;
+  ros::Rate rate(1.0);
+
+  while (ros::ok()) {
+    const auto result = nh.getParam(key, value);
+    if (result) {
+      return value;
+    }
+
+    ROS_WARN("waiting for parameter `%s` ...", key.c_str());
+    rate.sleep();
+  }
+
+  return {};
+}
+
+SurroundObstacleCheckerNode::SurroundObstacleCheckerNode()
+: nh_(), pnh_("~"), tf_listener_(tf_buffer_)
 {
   // Parameters
-  use_pointcloud_ = this->declare_parameter("use_pointcloud", true);
-  use_dynamic_object_ = this->declare_parameter("use_dynamic_object", true);
-  surround_check_distance_ = this->declare_parameter("surround_check_distance", 2.0);
-  surround_check_recover_distance_ =
-    this->declare_parameter("surround_check_recover_distance", 2.5);
-  state_clear_time_ = this->declare_parameter("state_clear_time", 2.0);
-  stop_state_ego_speed_ = this->declare_parameter("stop_state_ego_speed", 0.1);
-  debug_ptr_ = std::make_shared<SurroundObstacleCheckerDebugNode>(
-    vehicle_info_.max_longitudinal_offset_m, this->get_clock(), *this);
+  pnh_.param<bool>("use_pointcloud", use_pointcloud_, true);
+  pnh_.param<bool>("use_dynamic_object", use_dynamic_object_, true);
+  pnh_.param<double>("surround_check_distance", surround_check_distance_, 2.0);
+  pnh_.param<double>("surround_check_recover_distance", surround_check_recover_distance_, 2.5);
+  pnh_.param<double>("state_clear_time", state_clear_time_, 2.0);
+  pnh_.param<double>("stop_state_ego_speed", stop_state_ego_speed_, 0.1);
+  wheel_base_ = waitForParam<double>(pnh_, "/vehicle_info/wheel_base");
+  front_overhang_ = waitForParam<double>(pnh_, "/vehicle_info/front_overhang");
+  rear_overhang_ = waitForParam<double>(pnh_, "/vehicle_info/rear_overhang");
+  left_overhang_ = waitForParam<double>(pnh_, "/vehicle_info/left_overhang");
+  right_overhang_ = waitForParam<double>(pnh_, "/vehicle_info/right_overhang");
+  wheel_tread_ = waitForParam<double>(pnh_, "/vehicle_info/wheel_tread");
+  vehicle_width_ = waitForParam<double>(pnh_, "/vehicle_info/vehicle_width");
+  vehicle_length_ = waitForParam<double>(pnh_, "/vehicle_info/vehicle_length");
+  debug_ptr_ = std::make_shared<SurroundObstacleCheckerDebugNode>(wheel_base_ + front_overhang_);
   self_poly_ = createSelfPolygon();
 
   // Publishers
-  path_pub_ =
-    this->create_publisher<autoware_auto_planning_msgs::msg::Trajectory>("~/output/trajectory", 1);
+  path_pub_ = pnh_.advertise<autoware_planning_msgs::Trajectory>("output/trajectory", 1);
   stop_reason_diag_pub_ =
-    this->create_publisher<diagnostic_msgs::msg::DiagnosticStatus>("~/output/no_start_reason", 1);
+    pnh_.advertise<diagnostic_msgs::DiagnosticStatus>("output/no_start_reason", 1);
 
   // Subscriber
-  path_sub_ = this->create_subscription<autoware_auto_planning_msgs::msg::Trajectory>(
-    "~/input/trajectory", 1,
-    std::bind(&SurroundObstacleCheckerNode::pathCallback, this, std::placeholders::_1));
-  pointcloud_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-    "~/input/pointcloud", rclcpp::SensorDataQoS(),
-    std::bind(&SurroundObstacleCheckerNode::pointCloudCallback, this, std::placeholders::_1));
+  path_sub_ =
+    pnh_.subscribe("input/trajectory", 1, &SurroundObstacleCheckerNode::pathCallback, this);
+  pointcloud_sub_ =
+    pnh_.subscribe("input/pointcloud", 1, &SurroundObstacleCheckerNode::pointCloudCallback, this);
   dynamic_object_sub_ =
-    this->create_subscription<autoware_auto_perception_msgs::msg::PredictedObjects>(
-      "~/input/objects", 1,
-      std::bind(&SurroundObstacleCheckerNode::dynamicObjectCallback, this, std::placeholders::_1));
-  current_velocity_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
-    "~/input/odometry", 1,
-    std::bind(&SurroundObstacleCheckerNode::currentVelocityCallback, this, std::placeholders::_1));
+    pnh_.subscribe("input/objects", 1, &SurroundObstacleCheckerNode::dynamicObjectCallback, this);
+  current_velocity_sub_ =
+    pnh_.subscribe("input/twist", 1, &SurroundObstacleCheckerNode::currentVelocityCallback, this);
 }
 
 void SurroundObstacleCheckerNode::pathCallback(
-  const autoware_auto_planning_msgs::msg::Trajectory::ConstSharedPtr input_msg)
+  const autoware_planning_msgs::Trajectory::ConstPtr & input_msg)
 {
   if (use_pointcloud_ && !pointcloud_ptr_) {
-    RCLCPP_WARN_THROTTLE(
-      this->get_logger(), *this->get_clock(), 1000 /* ms */, "waiting for pointcloud info...");
+    ROS_WARN_THROTTLE(1.0, "waiting for pointcloud info...");
     return;
   }
 
   if (use_dynamic_object_ && !object_ptr_) {
-    RCLCPP_WARN_THROTTLE(
-      this->get_logger(), *this->get_clock(), 1000 /* ms */, "waiting for dynamic object info...");
+    ROS_WARN_THROTTLE(1.0, "waiting for dynamic object info...");
     return;
   }
 
   if (!current_velocity_ptr_) {
-    RCLCPP_WARN_THROTTLE(
-      this->get_logger(), *this->get_clock(), 1000 /* ms */, "waiting for current velocity...");
+    ROS_WARN_THROTTLE(1.0, "waiting for current velocity...");
     return;
   }
 
   // parameter description
-  TrajectoryPoints output_trajectory_points =
-    autoware_utils::convertToTrajectoryPointArray(*input_msg);
-
-  diagnostic_msgs::msg::DiagnosticStatus no_start_reason_diag;
+  autoware_planning_msgs::Trajectory output_msg = *input_msg;
+  diagnostic_msgs::DiagnosticStatus no_start_reason_diag;
 
   // get current pose in traj frame
-  geometry_msgs::msg::Pose current_pose;
-  if (!getPose(input_msg->header.frame_id, "base_link", current_pose)) {
+  geometry_msgs::Pose current_pose;
+  if (!getPose(input_msg->header.frame_id, "base_link", input_msg->header.stamp, current_pose)) {
     return;
   }
 
   // get closest idx
-  const size_t closest_idx = getClosestIdx(output_trajectory_points, current_pose);
+  const size_t closest_idx = getClosestIdx(*input_msg, current_pose);
 
   // get nearest object
   double min_dist_to_obj = std::numeric_limits<double>::max();
-  geometry_msgs::msg::Point nearest_obj_point;
+  geometry_msgs::Point nearest_obj_point;
   getNearestObstacle(&min_dist_to_obj, &nearest_obj_point);
 
   // check current obstacle status (exist or not)
@@ -124,10 +131,10 @@ void SurroundObstacleCheckerNode::pathCallback(
     state_ = State::STOP;
 
     // do not start when there is a obstacle near the ego vehicle.
-    RCLCPP_WARN_THROTTLE(
-      get_logger(), *this->get_clock(), 500 /* ms */,
-      "do not start because there is obstacle near the ego vehicle.");
-    insertStopVelocity(closest_idx, &output_trajectory_points);
+    ROS_WARN_STREAM_THROTTLE(
+      0.5, "[surround_obstacle_checker]: "
+             << "do not start because there is obstacle near the ego vehicle.");
+    insertStopVelocity(closest_idx, &output_msg);
 
     // visualization for debug
     if (is_obstacle_found) {
@@ -140,92 +147,92 @@ void SurroundObstacleCheckerNode::pathCallback(
   }
 
   // publish trajectory and debug info
-  auto output_msg = autoware_utils::convertToTrajectory(output_trajectory_points);
-  output_msg.header = input_msg->header;
-  path_pub_->publish(output_msg);
-  stop_reason_diag_pub_->publish(no_start_reason_diag);
+  path_pub_.publish(output_msg);
+  stop_reason_diag_pub_.publish(no_start_reason_diag);
   debug_ptr_->publish();
 }
 
 void SurroundObstacleCheckerNode::pointCloudCallback(
-  const sensor_msgs::msg::PointCloud2::ConstSharedPtr input_msg)
+  const sensor_msgs::PointCloud2::ConstPtr & input_msg)
 {
   pointcloud_ptr_ = input_msg;
 }
 
 void SurroundObstacleCheckerNode::dynamicObjectCallback(
-  const autoware_auto_perception_msgs::msg::PredictedObjects::ConstSharedPtr input_msg)
+  const autoware_perception_msgs::DynamicObjectArray::ConstPtr & input_msg)
 {
   object_ptr_ = input_msg;
 }
 
 void SurroundObstacleCheckerNode::currentVelocityCallback(
-  const nav_msgs::msg::Odometry::ConstSharedPtr input_msg)
+  const geometry_msgs::TwistStamped::ConstPtr & input_msg)
 {
   current_velocity_ptr_ = input_msg;
 }
 
 void SurroundObstacleCheckerNode::insertStopVelocity(
-  const size_t closest_idx, TrajectoryPoints * traj)
+  const size_t closest_idx, autoware_planning_msgs::Trajectory * traj)
 {
-  // set zero velocity from closest idx to last idx
-  for (size_t i = closest_idx; i < traj->size(); i++) {
-    traj->at(i).longitudinal_velocity_mps = 0.0;
+  //set zero velocity from closest idx to last idx
+  for (size_t i = closest_idx; i < traj->points.size(); i++) {
+    traj->points.at(i).twist.linear.x = 0.0;
   }
 }
 
 bool SurroundObstacleCheckerNode::getPose(
-  const std::string & source, const std::string & target, geometry_msgs::msg::Pose & pose)
+  const std::string & source, const std::string & target, const ros::Time & time,
+  geometry_msgs::Pose & pose)
 {
   try {
     // get transform from source to target
-    geometry_msgs::msg::TransformStamped ros_src2tgt =
-      tf_buffer_.lookupTransform(source, target, tf2::TimePointZero);
-    // convert geometry_msgs::msg::Transform to geometry_msgs::msg::Pose
+    geometry_msgs::TransformStamped ros_src2tgt;
+    ros_src2tgt = tf_buffer_.lookupTransform(source, target, time, ros::Duration(0.1));
+    // convert geometry_msgs::Transform to geometry_msgs::Pose
     tf2::Transform transform;
     tf2::fromMsg(ros_src2tgt.transform, transform);
     tf2::toMsg(transform, pose);
   } catch (tf2::TransformException & ex) {
-    RCLCPP_WARN_STREAM_THROTTLE(
-      get_logger(), *this->get_clock(), 500 /* ms */,
-      "cannot get tf from " << source << " to " << target);
+    ROS_WARN_STREAM_THROTTLE(
+      0.5, "[surround_obstacle_checker]: cannot get tf from " << source << " to " << target);
     return false;
   }
   return true;
 }
 
 bool SurroundObstacleCheckerNode::convertPose(
-  const geometry_msgs::msg::Pose & pose, const std::string & source, const std::string & target,
-  const rclcpp::Time & time, geometry_msgs::msg::Pose & conv_pose)
+  const geometry_msgs::Pose & pose, const std::string & source, const std::string & target,
+  const ros::Time & time, geometry_msgs::Pose & conv_pose)
 {
+  geometry_msgs::TransformStamped ros_src2tgt;
   tf2::Transform src2tgt;
+  tf2::Transform src2obj;
+  tf2::Transform tgt2obj;
+
   try {
     // get transform from source to target
-    geometry_msgs::msg::TransformStamped ros_src2tgt =
-      tf_buffer_.lookupTransform(source, target, time, tf2::durationFromSec(0.1));
+    ros_src2tgt = tf_buffer_.lookupTransform(source, target, time, ros::Duration(0.1));
     tf2::fromMsg(ros_src2tgt.transform, src2tgt);
   } catch (tf2::TransformException & ex) {
-    RCLCPP_WARN_STREAM_THROTTLE(
-      get_logger(), *this->get_clock(), 500 /* ms */,
-      "cannot get tf from " << source << " to " << target);
+    ROS_WARN_STREAM_THROTTLE(
+      0.5, "[surround obstacle checker] cannot get tf from " << source << " to " << target);
     return false;
   }
 
-  tf2::Transform src2obj;
   tf2::fromMsg(pose, src2obj);
-  tf2::Transform tgt2obj = src2tgt.inverse() * src2obj;
+  tgt2obj = src2tgt.inverse() * src2obj;
   tf2::toMsg(tgt2obj, conv_pose);
   return true;
 }
 
 size_t SurroundObstacleCheckerNode::getClosestIdx(
-  const TrajectoryPoints & traj, const geometry_msgs::msg::Pose current_pose)
+  const autoware_planning_msgs::Trajectory & traj, const geometry_msgs::Pose current_pose)
 {
   double min_dist = std::numeric_limits<double>::max();
   size_t min_dist_idx = 0;
-  for (size_t i = 0; i < traj.size(); ++i) {
-    const double x = traj.at(i).pose.position.x - current_pose.position.x;
-    const double y = traj.at(i).pose.position.y - current_pose.position.y;
+  bool is_init = false;
+  for (size_t i = 0; i < traj.points.size(); ++i) {
+    const double x = traj.points.at(i).pose.position.x - current_pose.position.x;
+    const double y = traj.points.at(i).pose.position.y - current_pose.position.y;
     const double dist = std::hypot(x, y);
     if (dist < min_dist) {
       min_dist_idx = i;
@@ -236,7 +243,7 @@ size_t SurroundObstacleCheckerNode::getClosestIdx(
 }
 
 void SurroundObstacleCheckerNode::getNearestObstacle(
-  double * min_dist_to_obj, geometry_msgs::msg::Point * nearest_obj_point)
+  double * min_dist_to_obj, geometry_msgs::Point * nearest_obj_point)
 {
   if (use_pointcloud_) {
     getNearestObstacleByPointCloud(min_dist_to_obj, nearest_obj_point);
@@ -248,33 +255,36 @@ void SurroundObstacleCheckerNode::getNearestObstacle(
 }
 
 void SurroundObstacleCheckerNode::getNearestObstacleByPointCloud(
-  double * min_dist_to_obj, geometry_msgs::msg::Point * nearest_obj_point)
+  double * min_dist_to_obj, geometry_msgs::Point * nearest_obj_point)
 {
   // wait to transform pointcloud
-  geometry_msgs::msg::TransformStamped transform_stamped;
+  geometry_msgs::TransformStamped transform_stamped;
   try {
     transform_stamped = tf_buffer_.lookupTransform(
       "base_link", pointcloud_ptr_->header.frame_id, pointcloud_ptr_->header.stamp,
-      tf2::durationFromSec(0.5));
+      ros::Duration(0.5));
   } catch (tf2::TransformException & ex) {
-    RCLCPP_WARN_STREAM_THROTTLE(
-      get_logger(), *this->get_clock(), 500 /* ms */,
-      "failed to get base_link to " << pointcloud_ptr_->header.frame_id << " transform.");
+    ROS_WARN_STREAM_THROTTLE(
+      0.5, "[surround obstacle checker] failed to get base_link to "
+             << pointcloud_ptr_->header.frame_id << " transform.");
     return;
   }
 
-  Eigen::Affine3f isometry = tf2::transformToEigen(transform_stamped.transform).cast<float>();
-  pcl::PointCloud<pcl::PointXYZ> pcl;
-  pcl::fromROSMsg(*pointcloud_ptr_, pcl);
-  pcl::transformPointCloud(pcl, pcl, isometry);
-  for (const auto & p : pcl) {
-    // create boost point
+  Eigen::Matrix4f affine_matrix =
+    tf2::transformToEigen(transform_stamped.transform).matrix().cast<float>();
+  sensor_msgs::PointCloud2 transformed_pointcloud;
+  pcl_ros::transformPointCloud(affine_matrix, *pointcloud_ptr_, transformed_pointcloud);
+  pcl::PointCloud<pcl::PointXYZ>::Ptr pcl(new pcl::PointCloud<pcl::PointXYZ>);
+  pcl::fromROSMsg(transformed_pointcloud, *pcl);
+
+  for (const auto p : *pcl) {
+    //create boost point
     Point2d boost_p(p.x, p.y);
 
-    // calc distance
+    //calc distance
     const double dist_to_obj = boost::geometry::distance(self_poly_, boost_p);
 
-    // get minimum distance to obj
+    //get minimum distance to obj
     if (dist_to_obj < *min_dist_to_obj) {
       *min_dist_to_obj = dist_to_obj;
       nearest_obj_point->x = p.x;
@@ -285,34 +295,33 @@ void SurroundObstacleCheckerNode::getNearestObstacleByPointCloud(
 }
 
 void SurroundObstacleCheckerNode::getNearestObstacleByDynamicObject(
-  double * min_dist_to_obj, geometry_msgs::msg::Point * nearest_obj_point)
+  double * min_dist_to_obj, geometry_msgs::Point * nearest_obj_point)
 {
   const auto obj_frame = object_ptr_->header.frame_id;
   const auto obj_time = object_ptr_->header.stamp;
-  for (const auto & obj : object_ptr_->objects) {
-    // change frame of obj_pose to base_link
-    geometry_msgs::msg::Pose pose_baselink;
+  for (const auto obj : object_ptr_->objects) {
+    //change frame of obj_pose to base_link
+    geometry_msgs::Pose pose_baselink;
     if (!convertPose(
-          obj.kinematics.initial_pose_with_covariance.pose, obj_frame, "base_link", obj_time,
-          pose_baselink)) {
+          obj.state.pose_covariance.pose, obj_frame, "base_link", obj_time, pose_baselink)) {
       return;
     }
 
-    // create obj polygon
+    //create obj polygon
     Polygon2d obj_poly;
-    if (obj.shape.type == autoware_auto_perception_msgs::msg::Shape::POLYGON) {
+    if (obj.shape.type == autoware_perception_msgs::Shape::POLYGON) {
       obj_poly = createObjPolygon(pose_baselink, obj.shape.footprint);
     } else {
       obj_poly = createObjPolygon(pose_baselink, obj.shape.dimensions);
     }
 
-    // calc distance
+    //calc distance
     const double dist_to_obj = boost::geometry::distance(self_poly_, obj_poly);
 
-    // get minimum distance to obj
+    //get minimum distance to obj
     if (dist_to_obj < *min_dist_to_obj) {
       *min_dist_to_obj = dist_to_obj;
-      *nearest_obj_point = obj.kinematics.initial_pose_with_covariance.pose.position;
+      *nearest_obj_point = obj.state.pose_covariance.pose.position;
     }
   }
 }
@@ -341,7 +350,7 @@ bool SurroundObstacleCheckerNode::isStopRequired(
   }
 
   if (is_obstacle_found) {
-    last_obstacle_found_time_ = std::make_shared<const rclcpp::Time>(this->now());
+    last_obstacle_found_time_ = std::make_shared<const ros::Time>(ros::Time::now());
     return true;
   }
 
@@ -351,8 +360,8 @@ bool SurroundObstacleCheckerNode::isStopRequired(
 
   // Keep stop state
   if (last_obstacle_found_time_) {
-    const auto elapsed_time = this->now() - *last_obstacle_found_time_;
-    if (elapsed_time.seconds() <= state_clear_time_) {
+    const auto elapsed_time = ros::Time::now() - *last_obstacle_found_time_;
+    if (elapsed_time.toSec() <= state_clear_time_) {
       return true;
     }
   }
@@ -362,18 +371,18 @@ bool SurroundObstacleCheckerNode::isStopRequired(
 }
 
 bool SurroundObstacleCheckerNode::checkStop(
-  const autoware_auto_planning_msgs::msg::TrajectoryPoint & closest_point)
+  const autoware_planning_msgs::TrajectoryPoint & closest_point)
 {
-  if (std::fabs(current_velocity_ptr_->twist.twist.linear.x) > stop_state_ego_speed_) {
-    // ego vehicle has high velocity now. not stop.
+  if (std::fabs(current_velocity_ptr_->twist.linear.x) > stop_state_ego_speed_) {
+    //ego vehicle has high velocity now. not stop.
     return false;
   }
 
-  const double closest_vel = closest_point.longitudinal_velocity_mps;
-  const double closest_acc = closest_point.acceleration_mps2;
+  const double closest_vel = closest_point.twist.linear.x;
+  const double closest_acc = closest_point.accel.linear.x;
 
   if (closest_vel * closest_acc < 0) {
-    // ego vehicle is about to stop (during deceleration). not stop.
+    //ego vehicle is about to stop (during deceleration). not stop.
     return false;
   }
 
@@ -382,10 +391,10 @@ bool SurroundObstacleCheckerNode::checkStop(
 
 Polygon2d SurroundObstacleCheckerNode::createSelfPolygon()
 {
-  const double front = vehicle_info_.max_longitudinal_offset_m;
-  const double rear = vehicle_info_.min_longitudinal_offset_m;
-  const double left = vehicle_info_.max_lateral_offset_m;
-  const double right = vehicle_info_.min_lateral_offset_m;
+  double front = front_overhang_ + wheel_base_;
+  double rear = -rear_overhang_;
+  double left = wheel_tread_ / 2.0 + left_overhang_;
+  double right = -(wheel_tread_ / 2.0 + right_overhang_);
 
   Polygon2d poly;
   boost::geometry::exterior_ring(poly) = boost::assign::list_of<Point2d>(front, left)(front, right)(
@@ -394,9 +403,9 @@ Polygon2d SurroundObstacleCheckerNode::createSelfPolygon()
 }
 
 Polygon2d SurroundObstacleCheckerNode::createObjPolygon(
-  const geometry_msgs::msg::Pose & pose, const geometry_msgs::msg::Vector3 & size)
+  const geometry_msgs::Pose & pose, const geometry_msgs::Vector3 & size)
 {
-  // rename
+  //rename
   const double x = pose.position.x;
   const double y = pose.position.y;
   const double h = size.x;
@@ -422,9 +431,9 @@ Polygon2d SurroundObstacleCheckerNode::createObjPolygon(
 }
 
 Polygon2d SurroundObstacleCheckerNode::createObjPolygon(
-  const geometry_msgs::msg::Pose & pose, const geometry_msgs::msg::Polygon & footprint)
+  const geometry_msgs::Pose & pose, const geometry_msgs::Polygon & footprint)
 {
-  // rename
+  //rename
   const double x = pose.position.x;
   const double y = pose.position.y;
   const double yaw = tf2::getYaw(pose.orientation);
@@ -449,12 +458,12 @@ Polygon2d SurroundObstacleCheckerNode::createObjPolygon(
   return translate_obj_poly;
 }
 
-diagnostic_msgs::msg::DiagnosticStatus SurroundObstacleCheckerNode::makeStopReasonDiag(
-  const std::string no_start_reason, const geometry_msgs::msg::Pose & stop_pose)
+diagnostic_msgs::DiagnosticStatus SurroundObstacleCheckerNode::makeStopReasonDiag(
+  const std::string no_start_reason, const geometry_msgs::Pose & stop_pose)
 {
-  diagnostic_msgs::msg::DiagnosticStatus no_start_reason_diag;
-  diagnostic_msgs::msg::KeyValue no_start_reason_diag_kv;
-  no_start_reason_diag.level = diagnostic_msgs::msg::DiagnosticStatus::OK;
+  diagnostic_msgs::DiagnosticStatus no_start_reason_diag;
+  diagnostic_msgs::KeyValue no_start_reason_diag_kv;
+  no_start_reason_diag.level = diagnostic_msgs::DiagnosticStatus::OK;
   no_start_reason_diag.name = "no_start_reason";
   no_start_reason_diag.message = no_start_reason;
   no_start_reason_diag_kv.key = "no_start_pose";
@@ -463,7 +472,7 @@ diagnostic_msgs::msg::DiagnosticStatus SurroundObstacleCheckerNode::makeStopReas
   return no_start_reason_diag;
 }
 
-std::string SurroundObstacleCheckerNode::jsonDumpsPose(const geometry_msgs::msg::Pose & pose)
+std::string SurroundObstacleCheckerNode::jsonDumpsPose(const geometry_msgs::Pose & pose)
 {
   const std::string json_dumps_pose =
     (boost::format(
@@ -473,6 +482,3 @@ std::string SurroundObstacleCheckerNode::jsonDumpsPose(const geometry_msgs::msg:
       .str();
   return json_dumps_pose;
 }
-
-#include <rclcpp_components/register_node_macro.hpp>
-RCLCPP_COMPONENTS_REGISTER_NODE(SurroundObstacleCheckerNode)

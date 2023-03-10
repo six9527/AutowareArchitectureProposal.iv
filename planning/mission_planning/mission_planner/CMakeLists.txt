@@ -1,44 +1,66 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.0.2)
 project(mission_planner)
 
-### Compile options
-if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 14)
-  set(CMAKE_CXX_STANDARD_REQUIRED ON)
-  set(CMAKE_CXX_EXTENSIONS OFF)
-endif()
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic)
-endif()
+add_compile_options(-std=c++14)
 
-find_package(ament_cmake_auto REQUIRED)
-ament_auto_find_build_dependencies()
+SET(CMAKE_BUILD_TYPE "Debug")
+SET(CMAKE_CXX_FLAGS_DEBUG "$ENV{CXXFLAGS} -O0 -Wall -g -ggdb")
+SET(CMAKE_CXX_FLAGS_RELEASE "$ENV{CXXFLAGS} -O3 -Wall")
 
-ament_auto_add_library(mission_planner_node SHARED
+find_package(catkin REQUIRED COMPONENTS
+  autoware_planning_msgs
+  geometry_msgs
+  lanelet2_extension
+  roscpp
+  tf2_ros
+  tf2_geometry_msgs
+)
+
+catkin_package(
+  INCLUDE_DIRS include
+  CATKIN_DEPENDS autoware_planning_msgs lanelet2_extension roscpp tf2_ros
+)
+
+include_directories(
+  include
+  ${catkin_INCLUDE_DIRS}
+)
+
+add_executable(mission_planner
   lib/mission_planner_base.cpp
   src/mission_planner_lanelet2/mission_planner_lanelet2.cpp
+  src/mission_planner_lanelet2/route_handler.cpp
+  src/mission_planner_lanelet2/mission_planner_main.cpp
   src/mission_planner_lanelet2/utility_functions.cpp
 )
-
-rclcpp_components_register_node(mission_planner_node
-  PLUGIN "mission_planner::MissionPlannerLanelet2"
-  EXECUTABLE mission_planner
+add_dependencies(mission_planner
+  ${${PROJECT_NAME}_EXPORTED_TARGETS}
+  ${catkin_EXPORTED_TARGETS}
+)
+target_link_libraries(mission_planner
+  ${catkin_LIBRARIES}
 )
 
-ament_auto_add_library(goal_pose_visualizer_node SHARED
+add_executable(goal_pose_visualizer
+  src/goal_pose_visualizer/main.cpp
   src/goal_pose_visualizer/goal_pose_visualizer.cpp
 )
-
-rclcpp_components_register_node(goal_pose_visualizer_node
-  PLUGIN "mission_planner::GoalPoseVisualizer"
-  EXECUTABLE goal_pose_visualizer
+add_dependencies(goal_pose_visualizer
+  ${${PROJECT_NAME}_EXPORTED_TARGETS}
+  ${catkin_EXPORTED_TARGETS}
+)
+target_link_libraries(goal_pose_visualizer
+  ${catkin_LIBRARIES}
 )
 
-if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  ament_lint_auto_find_test_dependencies()
-endif()
+install(TARGETS mission_planner goal_pose_visualizer
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
 
-ament_auto_package(INSTALL_TO_SHARE
-  launch
+install(
+  DIRECTORY
+    launch
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )

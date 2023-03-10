@@ -1,35 +1,38 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.0.2)
 project(turn_signal_decider)
 
-find_package(ament_cmake_auto REQUIRED)
-ament_auto_find_build_dependencies()
+add_compile_options(-std=c++14)
 
-### Compile options
-if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 14)
-  set(CMAKE_CXX_STANDARD_REQUIRED ON)
-  set(CMAKE_CXX_EXTENSIONS OFF)
-endif()
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic -Werror)
-endif()
+find_package(catkin REQUIRED COMPONENTS
+  autoware_planning_msgs
+  autoware_vehicle_msgs
+  geometry_msgs
+  lanelet2_extension
+  roscpp
+  std_msgs
+  tf2_ros
+)
 
 find_package(Eigen3 REQUIRED)
 
-ament_auto_add_library(turn_signal_decider_core SHARED
-  src/turn_signal_decider_core.cpp
-  src/data_manager.cpp
-  src/frenet_coordinate.cpp
+catkin_package()
+
+include_directories(
+  include
+  ${catkin_INCLUDE_DIRS}
+  ${EIGEN3_INCLUDE_DIR}
 )
 
-rclcpp_components_register_node(turn_signal_decider_core
-  PLUGIN "turn_signal_decider::TurnSignalDecider"
-  EXECUTABLE turn_signal_decider
+add_executable(turn_signal_decider src/turn_signal_decider_node.cpp src/turn_signal_decider_core.cpp src/data_manager.cpp src/frenet_coordinate.cpp)
+add_dependencies(turn_signal_decider ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(turn_signal_decider
+  ${catkin_LIBRARIES}
 )
 
-if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  ament_lint_auto_find_test_dependencies()
-endif()
-
-ament_auto_package()
+install(
+  TARGETS
+    turn_signal_decider
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)

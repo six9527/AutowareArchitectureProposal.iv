@@ -1,34 +1,49 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.0.2)
 project(freespace_planner)
 
-if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 14)
-  set(CMAKE_CXX_STANDARD_REQUIRED ON)
-  set(CMAKE_CXX_EXTENSIONS OFF)
-endif()
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic -Werror)
-endif()
+add_compile_options(-std=c++14)
 
-find_package(ament_cmake_auto REQUIRED)
-ament_auto_find_build_dependencies()
+find_package(
+  catkin REQUIRED COMPONENTS
+    astar_search
+    autoware_planning_msgs
+    geometry_msgs
+    nav_msgs
+    roscpp
+    tf2
+    tf2_ros
+    visualization_msgs
+)
 
-ament_auto_add_library(freespace_planner_node SHARED
+catkin_package()
+
+include_directories(
+  include
+  ${catkin_INCLUDE_DIRS}
+)
+
+add_executable(freespace_planner
   src/freespace_planner/freespace_planner_node.cpp
+  src/freespace_planner/main.cpp
 )
 
-rclcpp_components_register_node(freespace_planner_node
-  PLUGIN "freespace_planner::FreespacePlannerNode"
-  EXECUTABLE freespace_planner
+target_link_libraries(freespace_planner
+  ${catkin_LIBRARIES}
 )
 
-if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  ament_lint_auto_find_test_dependencies()
-endif()
+add_dependencies(freespace_planner
+  ${catkin_EXPORTED_TARGETS}
+)
 
-ament_auto_package(
-  INSTALL_TO_SHARE
-  launch
-  config
+install(
+  TARGETS freespace_planner
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+install(
+  DIRECTORY
+    launch
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )

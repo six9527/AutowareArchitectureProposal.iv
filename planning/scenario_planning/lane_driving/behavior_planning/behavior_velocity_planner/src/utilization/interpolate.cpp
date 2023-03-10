@@ -1,27 +1,24 @@
-// Copyright 2018-2019 Autoware Foundation
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2018-2019 Autoware Foundation. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
-#include <utilization/interpolate.hpp>
-#include <utilization/util.hpp>
+#include "utilization/interpolate.h"
+#include "utilization/util.h"
 
-#include <vector>
-
-namespace behavior_velocity_planner
-{
 namespace interpolation
 {
-// TODO(murooka) delete these functions
 /*
  * linear interpolation
  */
@@ -29,7 +26,7 @@ bool LinearInterpolate::interpolate(
   const std::vector<double> & base_index, const std::vector<double> & base_value,
   const std::vector<double> & return_index, std::vector<double> & return_value)
 {
-  if (!isValidInput(base_index, base_value, return_index)) {
+  if (!isValidInput(base_index, base_value, return_index, return_value)) {
     std::cerr << "[interpolate] invalid input. interpolation failed." << std::endl;
     return false;
   }
@@ -41,9 +38,7 @@ bool LinearInterpolate::interpolate(
       return_value.push_back(base_value[i]);
       continue;
     }
-    while (base_index[i] < idx) {
-      ++i;
-    }
+    while (base_index[i] < idx) ++i;
     if (i <= 0 || static_cast<int>(base_index.size()) - 1 < i) {
       std::cerr << "[interpolate] undesired condition. skip this idx!" << std::endl;
       continue;
@@ -71,16 +66,14 @@ bool LinearInterpolate::interpolate(
 bool isIncrease(const std::vector<double> & x)
 {
   for (int i = 0; i < static_cast<int>(x.size()) - 1; ++i) {
-    if (x[i] > x[i + 1]) {
-      return false;
-    }
+    if (x[i] > x[i + 1]) return false;
   }
   return true;
-}
+};
 
 bool isValidInput(
   const std::vector<double> & base_index, const std::vector<double> & base_value,
-  const std::vector<double> & return_index)
+  const std::vector<double> & return_index, std::vector<double> & return_value)
 {
   if (base_index.empty() || base_value.empty() || return_index.empty()) {
     std::cout << "bad index : some vector is empty. base_index: " << base_index.size()
@@ -131,4 +124,3 @@ std::vector<double> calcEuclidDist(const std::vector<double> & x, const std::vec
   return dist_v;
 }
 }  // namespace interpolation
-}  // namespace behavior_velocity_planner

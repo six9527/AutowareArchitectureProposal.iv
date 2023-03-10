@@ -1,16 +1,18 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2020 Tier IV, Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 /*
  *  Copyright (c) 2018, Nagoya University
@@ -19,18 +21,18 @@
  *  Redistribution and use in source and binary forms, with or without
  *  modification, are permitted provided that the following conditions are met:
  *
- *  * Redistributions of source code must retain the above copyright notice, private_node
+ *  * Redistributions of source code must retain the above copyright notice, this
  *    list of conditions and the following disclaimer.
  *
  *  * Redistributions in binary form must reproduce the above copyright notice,
- *    private_node list of conditions and the following disclaimer in the documentation
+ *    this list of conditions and the following disclaimer in the documentation
  *    and/or other materials provided with the distribution.
  *
  *  * Neither the name of Autoware nor the names of its
  *    contributors may be used to endorse or promote products derived from
- *    private_node software without specific prior written permission.
+ *    this software without specific prior written permission.
  *
- *  private_node SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ *  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
  *  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  *  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
  *  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
@@ -39,29 +41,21 @@
  *  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
  *  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- *  OF private_node SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  ********************/
 
-#include "costmap_generator/costmap_generator.hpp"
-#include "costmap_generator/object_map_utils.hpp"
+#include <costmap_generator/costmap_generator.h>
 
-#include <lanelet2_extension/utility/message_conversion.hpp>
-#include <lanelet2_extension/utility/query.hpp>
-#include <lanelet2_extension/utility/utilities.hpp>
-#include <lanelet2_extension/visualization/visualization.hpp>
-#include <pcl_ros/transforms.hpp>
+#include <lanelet2_extension/utility/message_conversion.h>
+#include <lanelet2_extension/utility/query.h>
+#include <lanelet2_extension/utility/utilities.h>
+#include <lanelet2_extension/visualization/visualization.h>
 
-#include <tf2/utils.h>
-#include <tf2_eigen/tf2_eigen.h>
-
-#include <memory>
-#include <string>
-#include <utility>
-#include <vector>
+#include <costmap_generator/object_map_utils.hpp>
 
 namespace
 {
-bool isActive(const autoware_planning_msgs::msg::Scenario::ConstSharedPtr scenario)
+bool isActive(const autoware_planning_msgs::Scenario::ConstPtr & scenario)
 {
   if (!scenario) {
     return false;
@@ -69,7 +63,7 @@ bool isActive(const autoware_planning_msgs::msg::Scenario::ConstSharedPtr scenar
 
   const auto & s = scenario->activating_scenarios;
   if (
-    std::find(std::begin(s), std::end(s), autoware_planning_msgs::msg::Scenario::PARKING) !=
+    std::find(std::begin(s), std::end(s), autoware_planning_msgs::Scenario::Parking) !=
     std::end(s)) {
     return true;
   }
@@ -78,11 +72,11 @@ bool isActive(const autoware_planning_msgs::msg::Scenario::ConstSharedPtr scenar
 }
 
 // Convert from Point32 to Point
-std::vector<geometry_msgs::msg::Point> poly2vector(const geometry_msgs::msg::Polygon & poly)
+std::vector<geometry_msgs::Point> poly2vector(const geometry_msgs::Polygon & poly)
 {
-  std::vector<geometry_msgs::msg::Point> ps;
+  std::vector<geometry_msgs::Point> ps;
   for (const auto & p32 : poly.points) {
-    geometry_msgs::msg::Point p;
+    geometry_msgs::Point p;
     p.x = p32.x;
     p.y = p32.y;
     p.z = p32.z;
@@ -91,91 +85,62 @@ std::vector<geometry_msgs::msg::Point> poly2vector(const geometry_msgs::msg::Pol
   return ps;
 }
 
-pcl::PointCloud<pcl::PointXYZ> getTransformedPointCloud(
-  const sensor_msgs::msg::PointCloud2 & pointcloud_msg,
-  const geometry_msgs::msg::Transform & transform)
-{
-  const Eigen::Matrix4f transform_matrix = tf2::transformToEigen(transform).matrix().cast<float>();
-
-  sensor_msgs::msg::PointCloud2 transformed_msg;
-  pcl_ros::transformPointCloud(transform_matrix, pointcloud_msg, transformed_msg);
-
-  pcl::PointCloud<pcl::PointXYZ> transformed_pointcloud;
-  pcl::fromROSMsg(transformed_msg, transformed_pointcloud);
-
-  return transformed_pointcloud;
-}
-
 }  // namespace
 
-CostmapGenerator::CostmapGenerator(const rclcpp::NodeOptions & node_options)
-: Node("costmap_generator", node_options), tf_buffer_(this->get_clock()), tf_listener_(tf_buffer_)
+CostmapGenerator::CostmapGenerator() : nh_(""), private_nh_("~"), tf_listener_(tf_buffer_)
 {
   // Parameters
-  costmap_frame_ = this->declare_parameter<std::string>("costmap_frame", "map");
-  vehicle_frame_ = this->declare_parameter<std::string>("vehicle_frame", "base_link");
-  map_frame_ = this->declare_parameter<std::string>("map_frame", "map");
-  update_rate_ = this->declare_parameter<double>("update_rate", 10.0);
-  grid_min_value_ = this->declare_parameter<double>("grid_min_value", 0.0);
-  grid_max_value_ = this->declare_parameter<double>("grid_max_value", 1.0);
-  grid_resolution_ = this->declare_parameter<double>("grid_resolution", 0.2);
-  grid_length_x_ = this->declare_parameter<double>("grid_length_x", 50);
-  grid_length_y_ = this->declare_parameter<double>("grid_length_y", 30);
-  grid_position_x_ = this->declare_parameter<double>("grid_position_x", 20);
-  grid_position_y_ = this->declare_parameter<double>("grid_position_y", 0);
-  maximum_lidar_height_thres_ = this->declare_parameter<double>("maximum_lidar_height_thres", 0.3);
-  minimum_lidar_height_thres_ = this->declare_parameter<double>("minimum_lidar_height_thres", -2.2);
-  use_objects_ = this->declare_parameter<bool>("use_objects", true);
-  use_points_ = this->declare_parameter<bool>("use_points", true);
-  use_wayarea_ = this->declare_parameter<bool>("use_wayarea", true);
-  expand_polygon_size_ = this->declare_parameter<double>("expand_polygon_size", 1.0);
-  size_of_expansion_kernel_ = this->declare_parameter<int>("size_of_expansion_kernel", 9);
-
-  // Wait for first tf
-  // We want to do this before creating subscriptions
-  while (rclcpp::ok()) {
-    try {
-      tf_buffer_.lookupTransform("map", "base_link", tf2::TimePointZero);
-      break;
-    } catch (const tf2::TransformException & ex) {
-      RCLCPP_INFO(this->get_logger(), "waiting for initial pose...");
-    }
-    rclcpp::sleep_for(std::chrono::milliseconds(5000));
-  }
+  private_nh_.param<std::string>("costmap_frame", costmap_frame_, "map");
+  private_nh_.param<std::string>("vehicle_frame", vehicle_frame_, "base_link");
+  private_nh_.param<std::string>("map_frame", map_frame_, "map");
+  private_nh_.param<double>("update_rate", update_rate_, 10.0);
+  private_nh_.param<double>("grid_min_value", grid_min_value_, 0.0);
+  private_nh_.param<double>("grid_max_value", grid_max_value_, 1.0);
+  private_nh_.param<double>("grid_resolution", grid_resolution_, 0.2);
+  private_nh_.param<double>("grid_length_x", grid_length_x_, 50);
+  private_nh_.param<double>("grid_length_y", grid_length_y_, 30);
+  private_nh_.param<double>("grid_position_x", grid_position_x_, 20);
+  private_nh_.param<double>("grid_position_y", grid_position_y_, 0);
+  private_nh_.param<double>("maximum_lidar_height_thres", maximum_lidar_height_thres_, 0.3);
+  private_nh_.param<double>("minimum_lidar_height_thres", minimum_lidar_height_thres_, -2.2);
+  private_nh_.param<bool>("use_objects", use_objects_, true);
+  private_nh_.param<bool>("use_points", use_points_, true);
+  private_nh_.param<bool>("use_wayarea", use_wayarea_, true);
+  private_nh_.param<double>("expand_polygon_size", expand_polygon_size_, 1.0);
+  private_nh_.param<int>("size_of_expansion_kernel", size_of_expansion_kernel_, 9);
 
   // Subscribers
-  using std::placeholders::_1;
-  sub_objects_ = this->create_subscription<autoware_auto_perception_msgs::msg::PredictedObjects>(
-    "~/input/objects", 1, std::bind(&CostmapGenerator::onObjects, this, _1));
-  sub_points_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-    "~/input/points_no_ground", rclcpp::SensorDataQoS(),
-    std::bind(&CostmapGenerator::onPoints, this, _1));
-  sub_lanelet_bin_map_ = this->create_subscription<autoware_auto_mapping_msgs::msg::HADMapBin>(
-    "~/input/vector_map", rclcpp::QoS{1}.transient_local(),
-    std::bind(&CostmapGenerator::onLaneletMapBin, this, _1));
-  sub_scenario_ = this->create_subscription<autoware_planning_msgs::msg::Scenario>(
-    "~/input/scenario", 1, std::bind(&CostmapGenerator::onScenario, this, _1));
+  sub_objects_ = private_nh_.subscribe("input/objects", 1, &CostmapGenerator::onObjects, this);
+  sub_points_ =
+    private_nh_.subscribe("input/points_no_ground", 1, &CostmapGenerator::onPoints, this);
+  sub_lanelet_bin_map_ =
+    private_nh_.subscribe("input/vector_map", 1, &CostmapGenerator::onLaneletMapBin, this);
+  sub_scenario_ = private_nh_.subscribe("input/scenario", 1, &CostmapGenerator::onScenario, this);
 
   // Publishers
-  pub_costmap_ = this->create_publisher<grid_map_msgs::msg::GridMap>("~/output/grid_map", 1);
-  pub_occupancy_grid_ =
-    this->create_publisher<nav_msgs::msg::OccupancyGrid>("~/output/occupancy_grid", 1);
+  pub_costmap_ = private_nh_.advertise<grid_map_msgs::GridMap>("output/grid_map", 1);
+  pub_occupancy_grid_ = private_nh_.advertise<nav_msgs::OccupancyGrid>("output/occupancy_grid", 1);
 
   // Timer
-  auto timer_callback = std::bind(&CostmapGenerator::onTimer, this);
-  const auto period = rclcpp::Rate(update_rate_).period();
-  timer_ = std::make_shared<rclcpp::GenericTimer<decltype(timer_callback)>>(
-    this->get_clock(), period, std::move(timer_callback),
-    this->get_node_base_interface()->get_context());
-  this->get_node_timers_interface()->add_timer(timer_, nullptr);
+  timer_ = private_nh_.createTimer(ros::Rate(update_rate_), &CostmapGenerator::onTimer, this);
 
   // Initialize
   initGridmap();
+
+  // Wait for first tf
+  while (ros::ok()) {
+    try {
+      tf_buffer_.lookupTransform(map_frame_, vehicle_frame_, ros::Time(0), ros::Duration(10.0));
+      break;
+    } catch (tf2::TransformException ex) {
+      ROS_DEBUG("waiting for initial pose...");
+    }
+  }
 }
 
 void CostmapGenerator::loadRoadAreasFromLaneletMap(
   const lanelet::LaneletMapPtr lanelet_map,
-  std::vector<std::vector<geometry_msgs::msg::Point>> * area_points)
+  std::vector<std::vector<geometry_msgs::Point>> * area_points)
 {
   // use all lanelets in map of subtype road to give way area
   lanelet::ConstLanelets all_lanelets = lanelet::utils::query::laneletLayer(lanelet_map);
@@ -183,7 +148,7 @@ void CostmapGenerator::loadRoadAreasFromLaneletMap(
 
   // convert lanelets to polygons and put into area_points array
   for (const auto & ll : road_lanelets) {
-    geometry_msgs::msg::Polygon poly;
+    geometry_msgs::Polygon poly;
     lanelet::visualization::lanelet2Polygon(ll, &poly);
     area_points->push_back(poly2vector(poly));
   }
@@ -191,12 +156,12 @@ void CostmapGenerator::loadRoadAreasFromLaneletMap(
 
 void CostmapGenerator::loadParkingAreasFromLaneletMap(
   const lanelet::LaneletMapPtr lanelet_map,
-  std::vector<std::vector<geometry_msgs::msg::Point>> * area_points)
+  std::vector<std::vector<geometry_msgs::Point>> * area_points)
 {
   // Parking lots
   lanelet::ConstPolygons3d all_parking_lots = lanelet::utils::query::getAllParkingLots(lanelet_map);
   for (const auto & ll_poly : all_parking_lots) {
-    geometry_msgs::msg::Polygon poly;
+    geometry_msgs::Polygon poly;
     lanelet::utils::conversion::toGeomMsgPoly(ll_poly, &poly);
     area_points->push_back(poly2vector(poly));
   }
@@ -208,17 +173,16 @@ void CostmapGenerator::loadParkingAreasFromLaneletMap(
     lanelet::ConstPolygon3d ll_poly;
     lanelet::utils::lineStringWithWidthToPolygon(parking_space, &ll_poly);
 
-    geometry_msgs::msg::Polygon poly;
+    geometry_msgs::Polygon poly;
     lanelet::utils::conversion::toGeomMsgPoly(ll_poly, &poly);
     area_points->push_back(poly2vector(poly));
   }
 }
 
-void CostmapGenerator::onLaneletMapBin(
-  const autoware_auto_mapping_msgs::msg::HADMapBin::ConstSharedPtr msg)
+void CostmapGenerator::onLaneletMapBin(const autoware_lanelet2_msgs::MapBin & msg)
 {
   lanelet_map_ = std::make_shared<lanelet::LaneletMap>();
-  lanelet::utils::conversion::fromBinMsg(*msg, lanelet_map_);
+  lanelet::utils::conversion::fromBinMsg(msg, lanelet_map_);
 
   if (use_wayarea_) {
     loadRoadAreasFromLaneletMap(lanelet_map_, &area_points_);
@@ -226,35 +190,31 @@ void CostmapGenerator::onLaneletMapBin(
   }
 }
 
-void CostmapGenerator::onObjects(
-  const autoware_auto_perception_msgs::msg::PredictedObjects::ConstSharedPtr msg)
+void CostmapGenerator::onObjects(const autoware_perception_msgs::DynamicObjectArray::ConstPtr & msg)
 {
   objects_ = msg;
 }
 
-void CostmapGenerator::onPoints(const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg)
-{
-  points_ = msg;
-}
+void CostmapGenerator::onPoints(const sensor_msgs::PointCloud2::ConstPtr & msg) { points_ = msg; }
 
-void CostmapGenerator::onScenario(const autoware_planning_msgs::msg::Scenario::ConstSharedPtr msg)
+void CostmapGenerator::onScenario(const autoware_planning_msgs::Scenario::ConstPtr & msg)
 {
   scenario_ = msg;
 }
 
-void CostmapGenerator::onTimer()
+void CostmapGenerator::onTimer(const ros::TimerEvent & event)
 {
   if (!isActive(scenario_)) {
     return;
   }
 
   // Get current pose
-  geometry_msgs::msg::TransformStamped tf;
+  geometry_msgs::TransformStamped tf;
   try {
-    tf = tf_buffer_.lookupTransform(
-      costmap_frame_, vehicle_frame_, rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
-  } catch (tf2::TransformException & ex) {
-    RCLCPP_ERROR(this->get_logger(), "%s", ex.what());
+    tf =
+      tf_buffer_.lookupTransform(costmap_frame_, vehicle_frame_, ros::Time(0), ros::Duration(1.0));
+  } catch (tf2::TransformException ex) {
+    ROS_ERROR("%s", ex.what());
     return;
   }
 
@@ -273,7 +233,9 @@ void CostmapGenerator::onTimer()
   }
 
   if (use_points_ && points_) {
-    costmap_[LayerName::points] = generatePointsCostmap(points_);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr points(new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::fromROSMsg(*points_, *points);
+    costmap_[LayerName::points] = generatePointsCostmap(points);
   }
 
   costmap_[LayerName::combined] = generateCombinedCostmap();
@@ -295,53 +257,41 @@ void CostmapGenerator::initGridmap()
 }
 
 grid_map::Matrix CostmapGenerator::generatePointsCostmap(
-  const sensor_msgs::msg::PointCloud2::ConstSharedPtr & in_points)
+  const pcl::PointCloud<pcl::PointXYZ>::Ptr & in_points)
 {
-  geometry_msgs::msg::TransformStamped points2costmap;
-  try {
-    points2costmap =
-      tf_buffer_.lookupTransform(costmap_frame_, in_points->header.frame_id, tf2::TimePointZero);
-  } catch (const tf2::TransformException & ex) {
-    RCLCPP_ERROR(rclcpp::get_logger("costmap_generator"), "%s", ex.what());
-  }
-
-  const auto transformed_points = getTransformedPointCloud(*in_points, points2costmap.transform);
-
   grid_map::Matrix points_costmap = points2costmap_.makeCostmapFromPoints(
     maximum_lidar_height_thres_, minimum_lidar_height_thres_, grid_min_value_, grid_max_value_,
-    costmap_, LayerName::points, transformed_points);
-
+    costmap_, LayerName::points, in_points);
   return points_costmap;
 }
 
-autoware_auto_perception_msgs::msg::PredictedObjects::ConstSharedPtr transformObjects(
+autoware_perception_msgs::DynamicObjectArray::ConstPtr transformObjects(
   const tf2_ros::Buffer & tf_buffer,
-  const autoware_auto_perception_msgs::msg::PredictedObjects::ConstSharedPtr in_objects,
+  const autoware_perception_msgs::DynamicObjectArray::ConstPtr & in_objects,
   const std::string & target_frame_id, const std::string & src_frame_id)
 {
-  auto objects = new autoware_auto_perception_msgs::msg::PredictedObjects();
+  auto objects = new autoware_perception_msgs::DynamicObjectArray();
   *objects = *in_objects;
   objects->header.frame_id = target_frame_id;
 
-  geometry_msgs::msg::TransformStamped objects2costmap;
+  geometry_msgs::TransformStamped objects2costmap;
   try {
-    objects2costmap = tf_buffer.lookupTransform(target_frame_id, src_frame_id, tf2::TimePointZero);
-  } catch (const tf2::TransformException & ex) {
-    RCLCPP_ERROR(rclcpp::get_logger("costmap_generator"), "%s", ex.what());
+    objects2costmap =
+      tf_buffer.lookupTransform(target_frame_id, src_frame_id, ros::Time(0), ros::Duration(1.0));
+  } catch (tf2::TransformException ex) {
+    ROS_ERROR("%s", ex.what());
   }
 
   for (auto & object : objects->objects) {
-    geometry_msgs::msg::PoseStamped output_stamped, input_stamped;
-    input_stamped.pose = object.kinematics.initial_pose_with_covariance.pose;
-    tf2::doTransform(input_stamped, output_stamped, objects2costmap);
-    object.kinematics.initial_pose_with_covariance.pose = output_stamped.pose;
+    auto & pose = object.state.pose_covariance.pose;
+    tf2::doTransform(pose, pose, objects2costmap);
   }
 
-  return autoware_auto_perception_msgs::msg::PredictedObjects::ConstSharedPtr(objects);
+  return autoware_perception_msgs::DynamicObjectArray::ConstPtr(objects);
 }
 
 grid_map::Matrix CostmapGenerator::generateObjectsCostmap(
-  const autoware_auto_perception_msgs::msg::PredictedObjects::ConstSharedPtr in_objects)
+  const autoware_perception_msgs::DynamicObjectArray::ConstPtr & in_objects)
 {
   const auto object_frame = in_objects->header.frame_id;
   const auto transformed_objects =
@@ -386,22 +336,20 @@ grid_map::Matrix CostmapGenerator::generateCombinedCostmap()
 void CostmapGenerator::publishCostmap(const grid_map::GridMap & costmap)
 {
   // Set header
-  std_msgs::msg::Header header;
+  std_msgs::Header header;
   header.frame_id = costmap_frame_;
-  header.stamp = this->now();
+  header.stamp = ros::Time::now();
 
   // Publish OccupancyGrid
-  nav_msgs::msg::OccupancyGrid out_occupancy_grid;
+  nav_msgs::OccupancyGrid out_occupancy_grid;
   grid_map::GridMapRosConverter::toOccupancyGrid(
     costmap, LayerName::combined, grid_min_value_, grid_max_value_, out_occupancy_grid);
   out_occupancy_grid.header = header;
-  pub_occupancy_grid_->publish(out_occupancy_grid);
+  pub_occupancy_grid_.publish(out_occupancy_grid);
 
   // Publish GridMap
-  auto out_gridmap_msg = grid_map::GridMapRosConverter::toMessage(costmap);
-  out_gridmap_msg->header = header;
-  pub_costmap_->publish(*out_gridmap_msg);
+  grid_map_msgs::GridMap out_gridmap_msg;
+  grid_map::GridMapRosConverter::toMessage(costmap, out_gridmap_msg);
+  out_gridmap_msg.info.header = header;
+  pub_costmap_.publish(out_gridmap_msg);
 }
-
-#include <rclcpp_components/register_node_macro.hpp>
-RCLCPP_COMPONENTS_REGISTER_NODE(CostmapGenerator)

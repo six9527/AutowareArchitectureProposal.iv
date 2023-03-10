@@ -1,44 +1,68 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.0.2)
 project(surround_obstacle_checker)
 
-### Compile options
-if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 14)
-  set(CMAKE_CXX_STANDARD_REQUIRED ON)
-  set(CMAKE_CXX_EXTENSIONS OFF)
-endif()
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic)
-endif()
+add_compile_options(-std=c++14)
 
-find_package(ament_cmake REQUIRED)
-find_package(eigen3_cmake_module REQUIRED)
+find_package(catkin REQUIRED COMPONENTS
+  autoware_perception_msgs
+  autoware_planning_msgs
+  roscpp
+  sensor_msgs
+  std_msgs
+  tf2
+  tf2_geometry_msgs
+  tf2_eigen
+  tf2_ros
+  visualization_msgs
+  pcl_ros
+)
+
 find_package(Eigen3 REQUIRED)
-find_package(PCL REQUIRED COMPONENTS common)
-find_package(ament_cmake_auto REQUIRED)
-ament_auto_find_build_dependencies()
 
-ament_auto_add_library(${PROJECT_NAME} SHARED
+catkin_package(
+  INCLUDE_DIRS include
+  CATKIN_DEPENDS
+  autoware_perception_msgs
+    autoware_planning_msgs
+    roscpp
+    sensor_msgs
+    std_msgs
+    tf2
+    tf2_geometry_msgs
+    tf2_eigen
+    tf2_ros
+    visualization_msgs
+    pcl_ros
+)
+
+include_directories(
+  include
+  ${EIGEN3_INCLUDE_DIRS}
+  ${catkin_INCLUDE_DIRS}
+)
+
+add_executable(surround_obstacle_checker_node
   src/debug_marker.cpp
   src/node.cpp
+  src/main.cpp
+)
+add_dependencies(surround_obstacle_checker_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+
+target_link_libraries(surround_obstacle_checker_node
+  ${catkin_LIBRARIES}
 )
 
-target_link_libraries(${PROJECT_NAME}
-  ${PCL_LIBRARIES}
+install(
+  TARGETS
+    surround_obstacle_checker_node
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
-rclcpp_components_register_node(${PROJECT_NAME}
-  PLUGIN "SurroundObstacleCheckerNode"
-  EXECUTABLE ${PROJECT_NAME}_node
-)
-
-if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  ament_lint_auto_find_test_dependencies()
-endif()
-
-ament_auto_package(
-  INSTALL_TO_SHARE
-  config
-  launch
+install(
+  DIRECTORY
+    config
+    launch
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )

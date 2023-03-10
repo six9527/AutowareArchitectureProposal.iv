@@ -1,45 +1,26 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-#include <scene_module/crosswalk/util.hpp>
-#include <utilization/util.hpp>
-
-#include <autoware_auto_perception_msgs/msg/predicted_objects.hpp>
-
-#include <boost/assert.hpp>
-#include <boost/assign/list_of.hpp>
-#include <boost/geometry.hpp>
-#include <boost/geometry/geometries/linestring.hpp>
-#include <boost/geometry/geometries/point_xy.hpp>
-
-#include <algorithm>
-#include <cmath>
-#include <memory>
-#include <string>
-#include <vector>
+/*
+ * Copyright 2020 Tier IV, Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+#include <scene_module/crosswalk/util.h>
+#include <utilization/util.h>
 
 #define EIGEN_MPL2_ONLY
-#include <Eigen/Core>
-#include <Eigen/Geometry>
-#include <lanelet2_extension/regulatory_elements/road_marking.hpp>
-#include <lanelet2_extension/utility/query.hpp>
-#include <lanelet2_extension/utility/utilities.hpp>
 
 #include <lanelet2_core/primitives/BasicRegulatoryElements.h>
+#include <lanelet2_extension/regulatory_elements/road_marking.h>
 
-namespace behavior_velocity_planner
-{
 namespace bg = boost::geometry;
 using Point = bg::model::d2::point_xy<double>;
 using Polygon = bg::model::polygon<Point>;
@@ -56,9 +37,9 @@ bool getBackwardPointFromBasePoint(
 }
 
 bool insertTargetVelocityPoint(
-  const autoware_auto_planning_msgs::msg::PathWithLaneId & input, const Polygon & polygon,
+  const autoware_planning_msgs::PathWithLaneId & input, const Polygon & polygon,
   const double & margin, const double & velocity, const PlannerData & planner_data,
-  autoware_auto_planning_msgs::msg::PathWithLaneId & output, DebugData & debug_data,
+  autoware_planning_msgs::PathWithLaneId & output, DebugData & debug_data,
   boost::optional<int> & first_stop_path_point_index)
 {
   output = input;
@@ -69,9 +50,7 @@ bool insertTargetVelocityPoint(
     std::vector<Point> collision_points;
     bg::intersection(polygon, line, collision_points);
 
-    if (collision_points.empty()) {
-      continue;
-    }
+    if (collision_points.empty()) continue;
     // -- debug code --
     for (const auto & cp : collision_points) {
       Eigen::Vector3d point3d(cp.x(), cp.y(), planner_data.current_pose.pose.position.z);
@@ -84,7 +63,7 @@ bool insertTargetVelocityPoint(
     // ----------------
 
     // check nearest collision point
-    Point nearest_collision_point{};
+    Point nearest_collision_point;
     double min_dist = 0.0;
     for (size_t j = 0; j < collision_points.size(); ++j) {
       double dist = bg::distance(Point(p0.x, p0.y), collision_points.at(j));
@@ -98,7 +77,7 @@ bool insertTargetVelocityPoint(
 
     // search target point index
     size_t insert_target_point_idx = 0;
-    const double base_link2front = planner_data.vehicle_info_.max_longitudinal_offset_m;
+    const double base_link2front = planner_data.base_link2front;
     double length_sum = 0;
 
     const double target_length = margin + base_link2front;
@@ -120,7 +99,7 @@ bool insertTargetVelocityPoint(
 
     // create target point
     Eigen::Vector2d target_point;
-    autoware_auto_planning_msgs::msg::PathPointWithLaneId target_point_with_lane_id;
+    autoware_planning_msgs::PathPointWithLaneId target_point_with_lane_id;
     getBackwardPointFromBasePoint(point2, point1, point2, length_sum - target_length, target_point);
     const int target_velocity_point_idx =
       std::max(static_cast<int>(insert_target_point_idx) - 1, 0);
@@ -128,8 +107,8 @@ bool insertTargetVelocityPoint(
     target_point_with_lane_id.point.pose.position.x = target_point.x();
     target_point_with_lane_id.point.pose.position.y = target_point.y();
     if (insert_target_point_idx > 0) {
-      // calculate z-position of the target point (Internal division point of point1/point2)
-      // if insert_target_point_idx is zero, use z-position of target_velocity_point_idx
+      //calculate z-position of the target point (Internal division point of point1/point2)
+      //if insert_target_point_idx is zero, use z-position of target_velocity_point_idx
       const double internal_div_ratio =
         (point1 - target_point).norm() /
         ((point1 - target_point).norm() + (point2 - target_point).norm());
@@ -142,7 +121,7 @@ bool insertTargetVelocityPoint(
       const double yaw = std::atan2(point1.y() - point2.y(), point1.x() - point2.x());
       target_point_with_lane_id.point.pose.orientation = planning_utils::getQuaternionFromYaw(yaw);
     }
-    target_point_with_lane_id.point.longitudinal_velocity_mps = velocity;
+    target_point_with_lane_id.point.twist.linear.x = velocity;
     if (velocity == 0.0 && target_velocity_point_idx < first_stop_path_point_index) {
       first_stop_path_point_index = target_velocity_point_idx;
       // -- debug code --
@@ -150,11 +129,10 @@ bool insertTargetVelocityPoint(
       // ----------------
     }
     // -- debug code --
-    if (velocity == 0.0) {
+    if (velocity == 0.0)
       debug_data.stop_poses.push_back(target_point_with_lane_id.point.pose);
-    } else {
+    else
       debug_data.slow_poses.push_back(target_point_with_lane_id.point.pose);
-    }
     // ----------------
 
     // insert target point
@@ -162,10 +140,9 @@ bool insertTargetVelocityPoint(
       output.points.begin() + insert_target_point_idx, target_point_with_lane_id);
 
     // insert 0 velocity after target point
-    for (size_t j = insert_target_point_idx; j < output.points.size(); ++j) {
-      output.points.at(j).point.longitudinal_velocity_mps =
-        std::min(static_cast<float>(velocity), output.points.at(j).point.longitudinal_velocity_mps);
-    }
+    for (size_t j = insert_target_point_idx; j < output.points.size(); ++j)
+      output.points.at(j).point.twist.linear.x =
+        std::min(velocity, output.points.at(j).point.twist.linear.x);
     return true;
   }
   return false;
@@ -179,7 +156,7 @@ lanelet::Optional<lanelet::ConstLineString3d> getStopLineFromMap(
   const auto road_markings = lanelet.regulatoryElementsAs<lanelet::autoware::RoadMarking>();
   lanelet::ConstLineStrings3d stop_line;
   for (const auto & road_marking : road_markings) {
-    // TODO(someone): Create regulatory element for crosswalk
+    // TODO: Create regulatory element for crosswalk
     const std::string type =
       road_marking->roadMarking().attributeOr(lanelet::AttributeName::Type, "none");
     const int target_id = road_marking->roadMarking().attributeOr(attribute_name, 0);
@@ -188,17 +165,15 @@ lanelet::Optional<lanelet::ConstLineString3d> getStopLineFromMap(
       break;  // only one stop_line exists.
     }
   }
-  if (stop_line.empty()) {
-    return {};
-  }
+  if (stop_line.empty()) return {};
 
   return stop_line.front();
 }
 
 bool insertTargetVelocityPoint(
-  const autoware_auto_planning_msgs::msg::PathWithLaneId & input,
+  const autoware_planning_msgs::PathWithLaneId & input,
   const lanelet::ConstLineString3d & stop_line, const double & margin, const double & velocity,
-  const PlannerData & planner_data, autoware_auto_planning_msgs::msg::PathWithLaneId & output,
+  const PlannerData & planner_data, autoware_planning_msgs::PathWithLaneId & output,
   DebugData & debug_data, boost::optional<int> & first_stop_path_point_index)
 {
   using lanelet::utils::to2D;
@@ -211,9 +186,7 @@ bool insertTargetVelocityPoint(
     std::vector<Point> collision_points;
     bg::intersection(toHybrid(to2D(stop_line)), line, collision_points);
 
-    if (collision_points.empty()) {
-      continue;
-    }
+    if (collision_points.empty()) continue;
     // -- debug code --
     for (const auto & cp : collision_points) {
       Eigen::Vector3d point3d(cp.x(), cp.y(), planner_data.current_pose.pose.position.z);
@@ -226,7 +199,7 @@ bool insertTargetVelocityPoint(
     // ----------------
 
     // check nearest collision point
-    Point nearest_collision_point{};
+    Point nearest_collision_point;
     double min_dist = 0.0;
     for (size_t j = 0; j < collision_points.size(); ++j) {
       double dist = bg::distance(Point(p0.x, p0.y), collision_points.at(j));
@@ -240,7 +213,7 @@ bool insertTargetVelocityPoint(
 
     // search target point index
     size_t insert_target_point_idx = 0;
-    const double base_link2front = planner_data.vehicle_info_.max_longitudinal_offset_m;
+    const double base_link2front = planner_data.base_link2front;
     double length_sum = 0;
 
     const double target_length = margin + base_link2front;
@@ -262,7 +235,7 @@ bool insertTargetVelocityPoint(
 
     // create target point
     Eigen::Vector2d target_point;
-    autoware_auto_planning_msgs::msg::PathPointWithLaneId target_point_with_lane_id;
+    autoware_planning_msgs::PathPointWithLaneId target_point_with_lane_id;
     getBackwardPointFromBasePoint(point2, point1, point2, length_sum - target_length, target_point);
     const int target_velocity_point_idx =
       std::max(static_cast<int>(insert_target_point_idx) - 1, 0);
@@ -270,8 +243,8 @@ bool insertTargetVelocityPoint(
     target_point_with_lane_id.point.pose.position.x = target_point.x();
     target_point_with_lane_id.point.pose.position.y = target_point.y();
     if (insert_target_point_idx > 0) {
-      // calculate z-position of the target point (Internal division point of point1/point2)
-      // if insert_target_point_idx is zero, use z-position of target_velocity_point_idx
+      //calculate z-position of the target point (Internal division point of point1/point2)
+      //if insert_target_point_idx is zero, use z-position of target_velocity_point_idx
       const double internal_div_ratio =
         (point1 - target_point).norm() /
         ((point1 - target_point).norm() + (point2 - target_point).norm());
@@ -284,7 +257,7 @@ bool insertTargetVelocityPoint(
       const double yaw = std::atan2(point1.y() - point2.y(), point1.x() - point2.x());
       target_point_with_lane_id.point.pose.orientation = planning_utils::getQuaternionFromYaw(yaw);
     }
-    target_point_with_lane_id.point.longitudinal_velocity_mps = velocity;
+    target_point_with_lane_id.point.twist.linear.x = velocity;
     if (velocity == 0.0 && target_velocity_point_idx < first_stop_path_point_index) {
       first_stop_path_point_index = target_velocity_point_idx;
       // -- debug code --
@@ -292,11 +265,10 @@ bool insertTargetVelocityPoint(
       // ----------------
     }
     // -- debug code --
-    if (velocity == 0.0) {
+    if (velocity == 0.0)
       debug_data.stop_poses.push_back(target_point_with_lane_id.point.pose);
-    } else {
+    else
       debug_data.slow_poses.push_back(target_point_with_lane_id.point.pose);
-    }
     // ----------------
 
     // insert target point
@@ -304,10 +276,9 @@ bool insertTargetVelocityPoint(
       output.points.begin() + insert_target_point_idx, target_point_with_lane_id);
 
     // insert 0 velocity after target point
-    for (size_t j = insert_target_point_idx; j < output.points.size(); ++j) {
-      output.points.at(j).point.longitudinal_velocity_mps =
-        std::min(static_cast<float>(velocity), output.points.at(j).point.longitudinal_velocity_mps);
-    }
+    for (size_t j = insert_target_point_idx; j < output.points.size(); ++j)
+      output.points.at(j).point.twist.linear.x =
+        std::min(velocity, output.points.at(j).point.twist.linear.x);
     return true;
   }
   return false;
@@ -315,12 +286,12 @@ bool insertTargetVelocityPoint(
 
 bool isClockWise(const Polygon & polygon)
 {
-  const auto n = polygon.outer().size();
+  const int n = polygon.outer().size();
 
   const double x_offset = polygon.outer().at(0).x();
   const double y_offset = polygon.outer().at(0).y();
   double sum = 0.0;
-  for (std::size_t i = 0; i < polygon.outer().size(); ++i) {
+  for (int i = 0; i < polygon.outer().size(); ++i) {
     sum +=
       (polygon.outer().at(i).x() - x_offset) * (polygon.outer().at((i + 1) % n).y() - y_offset) -
       (polygon.outer().at(i).y() - y_offset) * (polygon.outer().at((i + 1) % n).x() - x_offset);
@@ -330,10 +301,9 @@ bool isClockWise(const Polygon & polygon)
 
 Polygon inverseClockWise(const Polygon & polygon)
 {
-  const auto & poly = polygon.outer();
-  Polygon inverted_polygon;
-  inverted_polygon.outer().reserve(poly.size());
-  std::reverse_copy(poly.begin(), poly.end(), std::back_inserter(inverted_polygon.outer()));
-  return inverted_polygon;
+  Polygon inversed_polygon;
+  for (int i = polygon.outer().size() - 1; 0 <= i; --i) {
+    inversed_polygon.outer().push_back(polygon.outer().at(i));
+  }
+  return inversed_polygon;
 }
-}  // namespace behavior_velocity_planner

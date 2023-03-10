@@ -1,35 +1,28 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-#include <scene_module/intersection/manager.hpp>
-#include <utilization/boost_geometry_helper.hpp>
-#include <utilization/util.hpp>
+/*
+ * Copyright 2020 Tier IV, Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+#include <scene_module/intersection/manager.h>
 
 #include <lanelet2_core/primitives/BasicRegulatoryElements.h>
 
-#include <memory>
-#include <set>
-#include <string>
-#include <vector>
+#include "utilization/util.h"
 
-namespace behavior_velocity_planner
-{
 namespace
 {
 std::vector<lanelet::ConstLanelet> getLaneletsOnPath(
-  const autoware_auto_planning_msgs::msg::PathWithLaneId & path,
-  const lanelet::LaneletMapPtr lanelet_map)
+  const autoware_planning_msgs::PathWithLaneId & path, const lanelet::LaneletMapPtr lanelet_map)
 {
   std::vector<lanelet::ConstLanelet> lanelets;
 
@@ -44,7 +37,7 @@ std::vector<lanelet::ConstLanelet> getLaneletsOnPath(
   return lanelets;
 }
 
-std::set<int64_t> getLaneIdSetOnPath(const autoware_auto_planning_msgs::msg::PathWithLaneId & path)
+std::set<int64_t> getLaneIdSetOnPath(const autoware_planning_msgs::PathWithLaneId & path)
 {
   std::set<int64_t> lane_id_set;
 
@@ -59,38 +52,28 @@ std::set<int64_t> getLaneIdSetOnPath(const autoware_auto_planning_msgs::msg::Pat
 
 }  // namespace
 
-IntersectionModuleManager::IntersectionModuleManager(rclcpp::Node & node)
-: SceneModuleManagerInterface(node, getModuleName())
+IntersectionModuleManager::IntersectionModuleManager()
+: SceneModuleManagerInterface(getModuleName())
 {
+  ros::NodeHandle pnh("~");
   const std::string ns(getModuleName());
-  auto & ip = intersection_param_;
-  const auto vehicle_info = vehicle_info_util::VehicleInfoUtil(node).getVehicleInfo();
-  ip.state_transit_margin_time = node.declare_parameter(ns + ".state_transit_margin_time", 2.0);
-  ip.decel_velocity = node.declare_parameter(ns + ".decel_velocity", 30.0 / 3.6);
-  ip.stop_line_margin = node.declare_parameter(ns + ".stop_line_margin", 1.0);
-  ip.stuck_vehicle_detect_dist = node.declare_parameter(ns + ".stuck_vehicle_detect_dist", 3.0);
-  ip.stuck_vehicle_ignore_dist = node.declare_parameter(ns + ".stuck_vehicle_ignore_dist", 5.0) +
-                                 vehicle_info.max_longitudinal_offset_m;
-  ip.stuck_vehicle_vel_thr = node.declare_parameter(ns + ".stuck_vehicle_vel_thr", 3.0 / 3.6);
-  ip.intersection_velocity = node.declare_parameter(ns + ".intersection_velocity", 10.0 / 3.6);
-  ip.intersection_max_acc = node.declare_parameter(ns + ".intersection_max_accel", 0.5);
-  ip.detection_area_margin = node.declare_parameter(ns + ".detection_area_margin", 0.5);
-  ip.detection_area_length = node.declare_parameter(ns + ".detection_area_length", 200.0);
-  ip.detection_area_angle_thr =
-    node.declare_parameter(ns + ".detection_area_angle_threshold", M_PI / 4.0);
-  ip.min_predicted_path_confidence =
-    node.declare_parameter(ns + ".min_predicted_path_confidence", 0.05);
-  ip.external_input_timeout = node.declare_parameter(ns + ".walkway.external_input_timeout", 1.0);
-  ip.collision_start_margin_time = node.declare_parameter(ns + ".collision_start_margin_time", 5.0);
-  ip.collision_end_margin_time = node.declare_parameter(ns + ".collision_end_margin_time", 2.0);
-  auto & mp = merge_from_private_area_param_;
-  mp.stop_duration_sec =
-    node.declare_parameter(ns + ".merge_from_private_area.stop_duration_sec", 1.0);
-  mp.intersection_param = intersection_param_;
+  auto & p = planner_param_;
+  pnh.param(ns + "/state_transit_margin_time", p.state_transit_margin_time, 2.0);
+  pnh.param(ns + "/decel_velocity", p.decel_velocity, 30.0 / 3.6);
+  pnh.param(ns + "/path_expand_width", p.path_expand_width, 2.0);
+  pnh.param(ns + "/stop_line_margin", p.stop_line_margin, 1.0);
+  pnh.param(ns + "/stuck_vehicle_detect_dist", p.stuck_vehicle_detect_dist, 3.0);
+  pnh.param(ns + "/stuck_vehicle_ignore_dist", p.stuck_vehicle_ignore_dist, 5.0) +
+    planner_data_->base_link2front;
+  pnh.param(ns + "/stuck_vehicle_vel_thr", p.stuck_vehicle_vel_thr, 3.0 / 3.6);
+  pnh.param(ns + "/intersection_velocity", p.intersection_velocity, 10.0 / 3.6);
+  pnh.param(ns + "/intersection_max_accel", p.intersection_max_acc, 0.5);
+  pnh.param(ns + "/detection_area_length", p.detection_area_length, 200.0);
+  pnh.param(ns + "/walkway/external_input_timeout", p.external_input_timeout, 1.0);
 }
 
 void IntersectionModuleManager::launchNewModules(
-  const autoware_auto_planning_msgs::msg::PathWithLaneId & path)
+  const autoware_planning_msgs::PathWithLaneId & path)
 {
   const auto lanelets = getLaneletsOnPath(path, planner_data_->lanelet_map);
   for (size_t i = 0; i < lanelets.size(); i++) {
@@ -117,20 +100,18 @@ void IntersectionModuleManager::launchNewModules(
       const std::string next_lane_location = next_lane.attributeOr("location", "else");
       if (lane_location == "private" && next_lane_location != "private") {
         registerModule(std::make_shared<MergeFromPrivateRoadModule>(
-          module_id, lane_id, planner_data_, merge_from_private_area_param_,
-          logger_.get_child("merge_from_private_road_module"), clock_));
+          module_id, lane_id, planner_data_, planner_param_));
       }
     }
 
-    registerModule(std::make_shared<IntersectionModule>(
-      module_id, lane_id, planner_data_, intersection_param_,
-      logger_.get_child("intersection_module"), clock_));
+    registerModule(
+      std::make_shared<IntersectionModule>(module_id, lane_id, planner_data_, planner_param_));
   }
 }
 
 std::function<bool(const std::shared_ptr<SceneModuleInterface> &)>
 IntersectionModuleManager::getModuleExpiredFunction(
-  const autoware_auto_planning_msgs::msg::PathWithLaneId & path)
+  const autoware_planning_msgs::PathWithLaneId & path)
 {
   const auto lane_id_set = getLaneIdSetOnPath(path);
 
@@ -138,4 +119,3 @@ IntersectionModuleManager::getModuleExpiredFunction(
     return lane_id_set.count(scene_module->getModuleId()) == 0;
   };
 }
-}  // namespace behavior_velocity_planner

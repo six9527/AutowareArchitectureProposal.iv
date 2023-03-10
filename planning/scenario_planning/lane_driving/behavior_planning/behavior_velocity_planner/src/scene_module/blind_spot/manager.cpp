@@ -1,35 +1,28 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-#include <scene_module/blind_spot/manager.hpp>
-#include <utilization/boost_geometry_helper.hpp>
-#include <utilization/util.hpp>
+/*
+ * Copyright 2020 Tier IV, Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+#include <scene_module/blind_spot/manager.h>
 
 #include <lanelet2_core/primitives/BasicRegulatoryElements.h>
 
-#include <memory>
-#include <set>
-#include <string>
-#include <vector>
+#include "utilization/util.h"
 
-namespace behavior_velocity_planner
-{
 namespace
 {
 std::vector<lanelet::ConstLanelet> getLaneletsOnPath(
-  const autoware_auto_planning_msgs::msg::PathWithLaneId & path,
-  const lanelet::LaneletMapPtr lanelet_map)
+  const autoware_planning_msgs::PathWithLaneId & path, const lanelet::LaneletMapPtr lanelet_map)
 {
   std::vector<lanelet::ConstLanelet> lanelets;
 
@@ -41,7 +34,7 @@ std::vector<lanelet::ConstLanelet> getLaneletsOnPath(
   return lanelets;
 }
 
-std::set<int64_t> getLaneIdSetOnPath(const autoware_auto_planning_msgs::msg::PathWithLaneId & path)
+std::set<int64_t> getLaneIdSetOnPath(const autoware_planning_msgs::PathWithLaneId & path)
 {
   std::set<int64_t> lane_id_set;
 
@@ -55,20 +48,18 @@ std::set<int64_t> getLaneIdSetOnPath(const autoware_auto_planning_msgs::msg::Pat
 
 }  // namespace
 
-BlindSpotModuleManager::BlindSpotModuleManager(rclcpp::Node & node)
-: SceneModuleManagerInterface(node, getModuleName())
+BlindSpotModuleManager::BlindSpotModuleManager() : SceneModuleManagerInterface(getModuleName())
 {
+  ros::NodeHandle pnh("~");
   const std::string ns(getModuleName());
-  planner_param_.stop_line_margin = node.declare_parameter(ns + ".stop_line_margin", 1.0);
-  planner_param_.backward_length = node.declare_parameter(ns + ".backward_length", 15.0);
-  planner_param_.ignore_width_from_center_line =
-    node.declare_parameter(ns + ".ignore_width_from_center_line", 1.0);
-  planner_param_.max_future_movement_time =
-    node.declare_parameter(ns + ".max_future_movement_time", 10.0);
+  auto & p = planner_param_;
+  pnh.param(ns + "/stop_line_margin", p.stop_line_margin, 1.0);
+  pnh.param(ns + "/backward_length", p.backward_length, 15.0);
+  pnh.param(ns + "/ignore_width_from_center_line", p.ignore_width_from_center_line, 1.0);
+  pnh.param(ns + "/max_future_movement_time", p.max_future_movement_time, 10.0);
 }
 
-void BlindSpotModuleManager::launchNewModules(
-  const autoware_auto_planning_msgs::msg::PathWithLaneId & path)
+void BlindSpotModuleManager::launchNewModules(const autoware_planning_msgs::PathWithLaneId & path)
 {
   for (const auto & ll : getLaneletsOnPath(path, planner_data_->lanelet_map)) {
     const auto lane_id = ll.id();
@@ -84,15 +75,14 @@ void BlindSpotModuleManager::launchNewModules(
       continue;
     }
 
-    registerModule(std::make_shared<BlindSpotModule>(
-      module_id, lane_id, planner_data_, planner_param_, logger_.get_child("blind_spot_module"),
-      clock_));
+    registerModule(
+      std::make_shared<BlindSpotModule>(module_id, lane_id, planner_data_, planner_param_));
   }
 }
 
 std::function<bool(const std::shared_ptr<SceneModuleInterface> &)>
 BlindSpotModuleManager::getModuleExpiredFunction(
-  const autoware_auto_planning_msgs::msg::PathWithLaneId & path)
+  const autoware_planning_msgs::PathWithLaneId & path)
 {
   const auto lane_id_set = getLaneIdSetOnPath(path);
 
@@ -100,4 +90,3 @@ BlindSpotModuleManager::getModuleExpiredFunction(
     return lane_id_set.count(scene_module->getModuleId()) == 0;
   };
 }
-}  // namespace behavior_velocity_planner

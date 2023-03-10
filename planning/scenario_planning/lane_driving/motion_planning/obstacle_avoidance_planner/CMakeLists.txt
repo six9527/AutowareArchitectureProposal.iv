@@ -1,22 +1,50 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.0.2)
 project(obstacle_avoidance_planner)
 
-if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 14)
-  set(CMAKE_CXX_STANDARD_REQUIRED ON)
-  set(CMAKE_CXX_EXTENSIONS OFF)
-endif()
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic -Werror)
-endif()
+find_package(catkin REQUIRED COMPONENTS
+  autoware_planning_msgs
+  autoware_perception_msgs
+  autoware_system_msgs
+  roscpp
+  tf2_ros
+  osqp_interface
+  spline_interpolation
+  dynamic_reconfigure
+)
 
-find_package(ament_cmake_auto REQUIRED)
-ament_auto_find_build_dependencies()
+generate_dynamic_reconfigure_options(
+  cfg/AvoidancePlanner.cfg
+)
 
 find_package(Eigen3 REQUIRED)
 find_package(OpenCV REQUIRED)
 
-ament_auto_add_library(obstacle_avoidance_planner SHARED
+catkin_package(
+  INCLUDE_DIRS
+    include
+  CATKIN_DEPENDS
+    autoware_planning_msgs
+    autoware_perception_msgs
+    autoware_system_msgs
+    roscpp
+    tf2_ros
+    osqp_interface
+    spline_interpolation
+  DEPENDS
+    OpenCV
+)
+
+
+include_directories(
+  include
+  ${catkin_INCLUDE_DIRS}
+  ${EIGEN3_INCLUDE_DIR}
+)
+
+add_compile_options(-std=c++14)
+
+
+add_executable(obstacle_avoidance_planner_node
   src/vehicle_model/vehicle_model_interface.cpp
   src/vehicle_model/vehicle_model_bicycle_kinematics.cpp
   src/vehicle_model/vehicle_model_bicycle_kinematics_no_delay.cpp
@@ -26,30 +54,40 @@ ament_auto_add_library(obstacle_avoidance_planner SHARED
   src/mpt_optimizer.cpp
   src/process_cv.cpp
   src/node.cpp
-)
+  src/main.cpp)
 
-target_include_directories(obstacle_avoidance_planner
+add_dependencies(obstacle_avoidance_planner_node
+  ${${PROJECT_NAME}_EXPORTED_TARGETS}
+  ${catkin_EXPORTED_TARGETS})
+
+target_include_directories(obstacle_avoidance_planner_node
   PUBLIC
-    ${OpenCV_INCLUDE_DIRS}
+    ${Opencv_INCLUDE_DIRS}
 )
 
-target_link_libraries(obstacle_avoidance_planner
+target_link_libraries(obstacle_avoidance_planner_node
+  ${catkin_LIBRARIES}
   ${OpenCV_LIBRARIES}
 )
 
-rclcpp_components_register_node(obstacle_avoidance_planner
-  PLUGIN "ObstacleAvoidancePlanner"
-  EXECUTABLE obstacle_avoidance_planner_node
+install(
+  TARGETS
+    obstacle_avoidance_planner_node
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
-if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  ament_lint_auto_find_test_dependencies()
-endif()
-
-ament_auto_package(
-  INSTALL_TO_SHARE
-    launch
+install(
+  DIRECTORY
     config
+    launch
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+)
+
+install(
+  DIRECTORY
     scripts
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+  USE_SOURCE_PERMISSIONS
 )

@@ -1,55 +1,73 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.0.2)
 
 project(costmap_generator)
 
-if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 14)
-  set(CMAKE_CXX_STANDARD_REQUIRED ON)
-  set(CMAKE_CXX_EXTENSIONS OFF)
-endif()
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic)
-endif()
+add_compile_options(-std=c++14)
 
-find_package(ament_cmake_auto REQUIRED)
-find_package(PCL REQUIRED COMPONENTS common io)
-find_package(FLANN REQUIRED)
-ament_auto_find_build_dependencies()
+find_package(catkin REQUIRED COMPONENTS
+  autoware_perception_msgs
+  autoware_planning_msgs
+  grid_map_ros
+  pcl_ros
+  roscpp
+  tf2
+  tf2_ros
+  lanelet2_extension
+)
+
+catkin_package()
 
 include_directories(
   include
-  ${GRID_MAP_INCLUDE_DIR}
-  ${PCL_COMMON_INCLUDE_DIRS}
-  ${PCL_INCLUDE_DIRS}
+  ${catkin_INCLUDE_DIRS}
 )
 
-ament_auto_add_library(costmap_generator_lib SHARED
+add_library(costmap_generator_lib STATIC
   nodes/costmap_generator/points_to_costmap.cpp
   nodes/costmap_generator/objects_to_costmap.cpp
   nodes/costmap_generator/object_map_utils.cpp
 )
+
 target_link_libraries(costmap_generator_lib
-  ${PCL_LIBRARIES}
-  FLANN::FLANN
+  ${catkin_LIBRARIES}
 )
 
-ament_auto_add_library(costmap_generator_node SHARED
+add_dependencies(costmap_generator_lib
+  ${catkin_EXPORTED_TARGETS}
+)
+
+add_executable(costmap_generator
   nodes/costmap_generator/costmap_generator_node.cpp
+  nodes/costmap_generator/main.cpp
 )
-target_link_libraries(costmap_generator_node
-  ${PCL_LIBRARIES}
+
+target_link_libraries(costmap_generator
   costmap_generator_lib
+  ${catkin_LIBRARIES}
 )
 
-rclcpp_components_register_node(costmap_generator_node
-  PLUGIN "CostmapGenerator"
-  EXECUTABLE costmap_generator
+add_dependencies(costmap_generator
+  ${catkin_EXPORTED_TARGETS}
 )
 
-if(BUILD_TESTING)
-  find_package(ament_cmake_gtest REQUIRED)
-  find_package(ament_lint_auto REQUIRED)
-  ament_lint_auto_find_test_dependencies()
+install(
+  TARGETS
+    costmap_generator
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+install(DIRECTORY include/${PROJECT_NAME}/
+  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+)
+
+install(
+  DIRECTORY
+    launch
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+)
+
+if (CATKIN_ENABLE_TESTING)
+  find_package(rostest REQUIRED)
 endif()
-
-ament_auto_package(INSTALL_TO_SHARE launch)

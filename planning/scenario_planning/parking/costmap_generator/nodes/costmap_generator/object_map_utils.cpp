@@ -1,16 +1,18 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2020 Tier IV, Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 /*
  * Copyright 2018-2019 Autoware Foundation. All rights reserved.
@@ -30,36 +32,31 @@
  *
  */
 
-#include "costmap_generator/object_map_utils.hpp"
-
-#include <string>
-#include <vector>
+#include <costmap_generator/object_map_utils.hpp>
 
 namespace object_map
 {
-void PublishGridMap(
-  const grid_map::GridMap & in_gridmap,
-  const rclcpp::Publisher<grid_map_msgs::msg::GridMap>::SharedPtr in_publisher)
+void PublishGridMap(const grid_map::GridMap & in_gridmap, const ros::Publisher & in_publisher)
 {
-  auto message = grid_map::GridMapRosConverter::toMessage(in_gridmap);
-  in_publisher->publish(*message);
+  grid_map_msgs::GridMap message;
+  grid_map::GridMapRosConverter::toMessage(in_gridmap, message);
+  in_publisher.publish(message);
 }
 
 void PublishOccupancyGrid(
-  const grid_map::GridMap & in_gridmap,
-  const rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr in_publisher,
+  const grid_map::GridMap & in_gridmap, const ros::Publisher & in_publisher,
   const std::string & in_layer, double in_min_value, double in_max_value, double in_height)
 {
-  nav_msgs::msg::OccupancyGrid message;
+  nav_msgs::OccupancyGrid message;
   grid_map::GridMapRosConverter::toOccupancyGrid(
     in_gridmap, in_layer, in_min_value, in_max_value, message);
   message.info.origin.position.z = in_height;
-  in_publisher->publish(message);
+  in_publisher.publish(message);
 }
 
 void FillPolygonAreas(
   grid_map::GridMap & out_grid_map,
-  const std::vector<std::vector<geometry_msgs::msg::Point>> & in_area_points,
+  const std::vector<std::vector<geometry_msgs::Point>> & in_area_points,
   const std::string & in_grid_layer_name, const int in_layer_background_value,
   const int in_layer_min_value, const int in_fill_color, const int in_layer_max_value,
   const std::string & in_tf_target_frame, const std::string & in_tf_source_frame,
@@ -77,9 +74,13 @@ void FillPolygonAreas(
 
   cv::Mat merged_filled_image = original_image.clone();
 
-  geometry_msgs::msg::TransformStamped transform;
-  transform = in_tf_buffer.lookupTransform(
-    in_tf_target_frame, in_tf_source_frame, rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
+  geometry_msgs::TransformStamped transform;
+  try {
+    transform = in_tf_buffer.lookupTransform(
+      in_tf_target_frame, in_tf_source_frame, ros::Time(0), ros::Duration(1.0));
+  } catch (tf2::TransformException ex) {
+    ROS_ERROR("%s", ex.what());
+  }
 
   // calculate out_grid_map position
   grid_map::Position map_pos = out_grid_map.getPosition();
@@ -91,11 +92,8 @@ void FillPolygonAreas(
 
     for (const auto & p : points) {
       // transform to GridMap coordinate
-      geometry_msgs::msg::Point transformed_point;
-      geometry_msgs::msg::PointStamped output_stamped, input_stamped;
-      input_stamped.point = p;
-      tf2::doTransform(input_stamped, output_stamped, transform);
-      transformed_point = output_stamped.point;
+      geometry_msgs::Point transformed_point;
+      tf2::doTransform(p, transformed_point, transform);
 
       // coordinate conversion for cv image
       const double cv_x = (out_grid_map.getLength().y() - origin_y_offset - transformed_point.y) /
