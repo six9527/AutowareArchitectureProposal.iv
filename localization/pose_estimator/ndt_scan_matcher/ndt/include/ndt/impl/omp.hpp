@@ -1,27 +1,25 @@
-// Copyright 2015-2019 Autoware Foundation
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2015-2019 Autoware Foundation. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #ifndef NORMAL_DISTRIBUTIONS_TRANSFORM_OMP_HPP
 #define NORMAL_DISTRIBUTIONS_TRANSFORM_OMP_HPP
 
-#include "ndt/omp.hpp"
-
-#include <vector>
-
 template <class PointSource, class PointTarget>
 NormalDistributionsTransformOMP<PointSource, PointTarget>::NormalDistributionsTransformOMP()
-: ndt_ptr_(new pclomp::NormalDistributionsTransform<PointSource, PointTarget>)
+: ndt_ptr_(new ndt_omp::NormalDistributionsTransform<PointSource, PointTarget>)
 {
 }
 
@@ -165,7 +163,7 @@ void NormalDistributionsTransformOMP<PointSource, PointTarget>::setNumThreads(in
 
 template <class PointSource, class PointTarget>
 void NormalDistributionsTransformOMP<PointSource, PointTarget>::setNeighborhoodSearchMethod(
-  pclomp::NeighborSearchMethod method)
+  ndt_omp::NeighborSearchMethod method)
 {
   ndt_ptr_->setNeighborhoodSearchMethod(method);
 }
@@ -177,10 +175,10 @@ int NormalDistributionsTransformOMP<PointSource, PointTarget>::getNumThreads() c
 }
 
 template <class PointSource, class PointTarget>
-pclomp::NeighborSearchMethod
+ndt_omp::NeighborSearchMethod
 NormalDistributionsTransformOMP<PointSource, PointTarget>::getNeighborhoodSearchMethod() const
 {
   return ndt_ptr_->getNeighborhoodSearchMethod();
 }
 
-#endif  // NORMAL_DISTRIBUTIONS_TRANSFORM_OMP_HPP
+#endif

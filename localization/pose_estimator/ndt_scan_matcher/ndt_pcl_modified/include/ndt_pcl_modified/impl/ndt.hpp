@@ -1,16 +1,18 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2020 Tier IV, Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 /*
  * Software License Agreement (BSD License)
  *
@@ -54,9 +56,6 @@
 #ifndef PCL_REGISTRATION_NDT_MODIFIED_IMPL_H_
 #define PCL_REGISTRATION_NDT_MODIFIED_IMPL_H_
 
-#include <algorithm>
-#include <vector>
-
 template <typename PointSource, typename PointTarget>
 void pcl::NormalDistributionsTransformModified<PointSource, PointTarget>::computeTransformation(
   PointCloudSource & output, const Eigen::Matrix4f & guess)
@@ -66,7 +65,7 @@ void pcl::NormalDistributionsTransformModified<PointSource, PointTarget>::comput
 
   double gauss_c1, gauss_c2, gauss_d3;
 
-  // Initializes the gaussian fitting parameters (eq. 6.8) [Magnusson 2009]
+  // Initializes the guassian fitting parameters (eq. 6.8) [Magnusson 2009]
   gauss_c1 = 10 * (1 - outlier_ratio_);
   gauss_c2 = outlier_ratio_ / pow(resolution_, 3);
   gauss_d3 = -log(gauss_c2);
@@ -99,8 +98,8 @@ void pcl::NormalDistributionsTransformModified<PointSource, PointTarget>::comput
 
   double score = 0;
   double delta_p_norm;
-  // Calculate derivatives of initial transform vector, subsequent derivative calculations are done
-  // in the step length determination.
+  // Calculate derivates of initial transform vector, subsequent derivative calculations are done in the step length
+  // determination.
   score = NormalDistributionsTransformModified<PointSource, PointTarget>::computeDerivatives(
     score_gradient, hessian, output, p);
 
@@ -112,12 +111,12 @@ void pcl::NormalDistributionsTransformModified<PointSource, PointTarget>::comput
     previous_transformation_ = transformation_;
 
     // Solve for decent direction using newton method, line 23 in Algorithm 2 [Magnusson 2009]
-    Eigen::JacobiSVD<Eigen::Matrix<double, 6, 6>> sv(
+    Eigen::JacobiSVD<Eigen::Matrix<double, 6, 6> > sv(
       hessian, Eigen::ComputeFullU | Eigen::ComputeFullV);
     // Negative for maximization as opposed to minimization
     delta_p = sv.solve(-score_gradient);
 
-    // Calculate step length with guaranteed sufficient decrease [More, Thuente 1994]
+    // Calculate step length with guarnteed sufficient decrease [More, Thuente 1994]
     delta_p_norm = delta_p.norm();
 
     if (delta_p_norm == 0 || delta_p_norm != delta_p_norm) {
@@ -169,9 +168,8 @@ void pcl::NormalDistributionsTransformModified<PointSource, PointTarget>::comput
     p = p + delta_p;
 
     // Update Visualizer (untested)
-    if (update_visualizer_ != 0) {
+    if (update_visualizer_ != 0)
       update_visualizer_(output, std::vector<int>(), *target_, std::vector<int>());
-    }
 
     if (
       nr_iterations_ > max_iterations_ || (converged_rotation && nr_iterations_ &&
@@ -182,8 +180,8 @@ void pcl::NormalDistributionsTransformModified<PointSource, PointTarget>::comput
     nr_iterations_++;
   }
 
-  // Store transformation probability.  The realtive differences within each scan registration are
-  // accurate but the normalization constants need to be modified for it to be globally accurate
+  // Store transformation probability.  The realtive differences within each scan registration are accurate
+  // but the normalization constants need to be modified for it to be globally accurate
   trans_probability_ = score / static_cast<double>(input_->points.size());
 
   hessian_ = hessian;
@@ -205,9 +203,9 @@ double pcl::NormalDistributionsTransformModified<PointSource, PointTarget>::comp
 
   if (d_phi_0 >= 0) {
     // Not a decent direction
-    if (d_phi_0 == 0) {
+    if (d_phi_0 == 0)
       return 0;
-    } else {
+    else {
       // Reverse step direction and calculate optimal step.
       d_phi_0 *= -1;
       step_dir *= -1;
@@ -219,7 +217,7 @@ double pcl::NormalDistributionsTransformModified<PointSource, PointTarget>::comp
   int max_step_iterations = 10;
   int step_iterations = 0;
 
-  // Sufficient decrease constant, Equation 1.1 [More, Thuete 1994]
+  // Sufficient decreace constant, Equation 1.1 [More, Thuete 1994]
   double mu = 1.e-4;
   // Curvature condition constant, Equation 1.2 [More, Thuete 1994]
   double nu = 0.9;
@@ -227,8 +225,7 @@ double pcl::NormalDistributionsTransformModified<PointSource, PointTarget>::comp
   // Initial endpoints of Interval I,
   double a_l = 0, a_u = 0;
 
-  // Auxiliary function psi is used until I is determined ot be a closed interval, Equation 2.1
-  // [More, Thuente 1994]
+  // Auxiliary function psi is used until I is determined ot be a closed interval, Equation 2.1 [More, Thuente 1994]
   double f_l =
     NormalDistributionsTransformModified<PointSource, PointTarget>::auxilaryFunction_PsiMT(
       a_l, phi_0, phi_0, d_phi_0, mu);
@@ -243,8 +240,7 @@ double pcl::NormalDistributionsTransformModified<PointSource, PointTarget>::comp
     NormalDistributionsTransformModified<PointSource, PointTarget>::auxilaryFunction_dPsiMT(
       d_phi_0, d_phi_0, mu);
 
-  // Check used to allow More-Thuente step length calculation to be skipped by making step_min ==
-  // step_max
+  // Check used to allow More-Thuente step length calculation to be skipped by making step_min == step_max
   bool interval_converged = (step_max - step_min) > 0, open_interval = true;
 
   double a_t = step_init;
@@ -264,9 +260,9 @@ double pcl::NormalDistributionsTransformModified<PointSource, PointTarget>::comp
   // New transformed point cloud
   transformPointCloud(*input_, trans_cloud, final_transformation_);
 
-  // Updates score, gradient and hessian.  Hessian calculation is unnecessary but testing showed
-  // that most step calculations use the initial step suggestion and recalculation the reusable
-  // portions of the hessian would intail more computation time.
+  // Updates score, gradient and hessian.  Hessian calculation is unessisary but testing showed that most step
+  // calculations use the initial step suggestion and recalculation the reusable portions of the hessian would intail
+  // more computation time.
   score = NormalDistributionsTransformModified<PointSource, PointTarget>::computeDerivatives(
     score_gradient, hessian, trans_cloud, x_t, true);
 
@@ -284,8 +280,8 @@ double pcl::NormalDistributionsTransformModified<PointSource, PointTarget>::comp
     NormalDistributionsTransformModified<PointSource, PointTarget>::auxilaryFunction_dPsiMT(
       d_phi_t, d_phi_0, mu);
 
-  // Iterate until max number of iterations, interval convergence or a value satisfies the
-  // sufficient decrease, Equation 1.1, and curvature condition, Equation 1.2 [More, Thuente 1994]
+  // Iterate until max number of iterations, interval convergance or a value satisfies the sufficient decrease,
+  // Equation 1.1, and curvature condition, Equation 1.2 [More, Thuente 1994]
 
   while (!interval_converged && step_iterations < max_step_iterations &&
          !(psi_t <= 0 /*Sufficient Decrease*/ && d_phi_t <= -nu * d_phi_0 /*Curvature Condition*/))
@@ -363,14 +359,13 @@ double pcl::NormalDistributionsTransformModified<PointSource, PointTarget>::comp
   }
 
   // If inner loop was run then hessian needs to be calculated.
-  // Hessian is unnecessary for step length determination but gradients are required
+  // Hessian is unnessisary for step length determination but gradients are required
   // so derivative and transform data is stored for the next iteration.
-  if (step_iterations) {
+  if (step_iterations)
     NormalDistributionsTransformModified<PointSource, PointTarget>::computeHessian(
       hessian, trans_cloud, x_t);
-  }
 
-  return a_t;
+  return (a_t);
 }
 
 #endif  // PCL_REGISTRATION_NDT_IMPL_MODIFIED_H_

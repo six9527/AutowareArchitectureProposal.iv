@@ -1,35 +1,47 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright (c) 2018, TierIV Inc.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above copyright
+ *       notice, this list of conditions and the following disclaimer in the
+ *       documentation and/or other materials provided with the distribution.
+ *     * Neither the name of the Willow Garage, Inc. nor the names of its
+ *       contributors may be used to endorse or promote products derived from
+ *       this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
 
-#include "initial_pose_button_panel.hpp"
+#include <string>
+#include <thread>
+#include <vector>
 
 #include <QFileDialog>
 #include <QHBoxLayout>
 #include <QLineEdit>
 #include <QPainter>
 #include <QPushButton>
-#include <pluginlib/class_list_macros.hpp>
-#include <rviz_common/display_context.hpp>
 
-#include <memory>
-#include <string>
-#include <thread>
-#include <vector>
+#include "initial_pose_button_panel.h"
 
 namespace autoware_localization_rviz_plugin
 {
-InitialPoseButtonPanel::InitialPoseButtonPanel(QWidget * parent) : rviz_common::Panel(parent)
+InitialPoseButtonPanel::InitialPoseButtonPanel(QWidget * parent) : rviz::Panel(parent)
 {
   topic_label_ = new QLabel("PoseWithCovarianceStamped ");
   topic_label_->setAlignment(Qt::AlignCenter);
@@ -58,36 +70,27 @@ InitialPoseButtonPanel::InitialPoseButtonPanel(QWidget * parent) : rviz_common::
   v_layout->addWidget(status_label_);
 
   setLayout(v_layout);
-}
-void InitialPoseButtonPanel::onInitialize()
-{
-  rclcpp::Node::SharedPtr raw_node =
-    this->getDisplayContext()->getRosNodeAbstraction().lock()->get_raw_node();
 
-  pose_cov_sub_ = raw_node->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
-    topic_edit_->text().toStdString(), 10,
-    std::bind(&InitialPoseButtonPanel::callbackPoseCov, this, std::placeholders::_1));
+  pose_cov_sub_ = nh_.subscribe(
+    topic_edit_->text().toStdString(), 10, &InitialPoseButtonPanel::callbackPoseCov, this);
 
-  client_ = raw_node->create_client<autoware_localization_msgs::srv::PoseWithCovarianceStamped>(
-    "/localization/util/initialize_pose");
+  client_ = nh_.serviceClient<autoware_localization_srvs::PoseWithCovarianceStamped>(
+    "/localization/util/pose_initializer_srv");
 }
 
 void InitialPoseButtonPanel::callbackPoseCov(
-  const geometry_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr msg)
+  const geometry_msgs::PoseWithCovarianceStamped::ConstPtr & msg)
 {
   pose_cov_msg_ = *msg;
-  initialize_button_->setText("Pose Initializer Let's GO!");
+  initialize_button_->setText("Pose Initializer   Let's GO!");
   initialize_button_->setEnabled(true);
 }
 
 void InitialPoseButtonPanel::editTopic()
 {
-  pose_cov_sub_.reset();
-  rclcpp::Node::SharedPtr raw_node =
-    this->getDisplayContext()->getRosNodeAbstraction().lock()->get_raw_node();
-  pose_cov_sub_ = raw_node->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
-    topic_edit_->text().toStdString(), 10,
-    std::bind(&InitialPoseButtonPanel::callbackPoseCov, this, std::placeholders::_1));
+  pose_cov_sub_.shutdown();
+  pose_cov_sub_ = nh_.subscribe(
+    topic_edit_->text().toStdString(), 10, &InitialPoseButtonPanel::callbackPoseCov, this);
   initialize_button_->setText("Wait for subscribe topic");
   initialize_button_->setEnabled(false);
 }
@@ -101,21 +104,17 @@ void InitialPoseButtonPanel::pushInitializeButton()
   status_label_->setText("Initializing...");
 
   std::thread thread([this] {
-    auto req =
-      std::make_shared<autoware_localization_msgs::srv::PoseWithCovarianceStamped::Request>();
-    req->pose_with_covariance = pose_cov_msg_;
-
-    client_->async_send_request(
-      req,
-      [this](
-        rclcpp::Client<autoware_localization_msgs::srv::PoseWithCovarianceStamped>::SharedFuture
-          result) {
-        status_label_->setStyleSheet("QLabel { background-color : lightgreen;}");
-        status_label_->setText("OK!!!");
-
-        // unlock button
-        initialize_button_->setEnabled(true);
-      });
+    autoware_localization_srvs::PoseWithCovarianceStamped srv;
+    srv.request.pose_with_cov = pose_cov_msg_;
+    if (client_.call(srv)) {
+      status_label_->setStyleSheet("QLabel { background-color : lightgreen;}");
+      status_label_->setText("OK!!!");
+    } else {
+      status_label_->setStyleSheet("QLabel { background-color : red;}");
+      status_label_->setText("Failed!");
+    }
+    // unlock button
+    initialize_button_->setEnabled(true);
   });
 
   thread.detach();
@@ -123,5 +122,5 @@ void InitialPoseButtonPanel::pushInitializeButton()
 
 }  // end namespace autoware_localization_rviz_plugin
 
-PLUGINLIB_EXPORT_CLASS(
-  autoware_localization_rviz_plugin::InitialPoseButtonPanel, rviz_common::Panel)
+#include <pluginlib/class_list_macros.h>
+PLUGINLIB_EXPORT_CLASS(autoware_localization_rviz_plugin::InitialPoseButtonPanel, rviz::Panel)

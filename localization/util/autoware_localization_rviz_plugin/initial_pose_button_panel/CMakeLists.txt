@@ -1,36 +1,53 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.0.2)
 project(initial_pose_button_panel)
 
-if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 14)
-endif()
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic)
+set(CMAKE_CXX_STANDARD 14)
+
+find_package(catkin REQUIRED COMPONENTS
+  rviz
+  std_msgs
+  geometry_msgs
+  autoware_localization_srvs
+)
+
+if(rviz_QT_VERSION VERSION_LESS "5")
+  message(STATUS "Using Qt4 based on the rviz_QT_VERSION: ${rviz_QT_VERSION}")
+  find_package(Qt4 ${rviz_QT_VERSION} EXACT REQUIRED QtCore QtGui)
+  include(${QT_USE_FILE})
+else()
+  message(STATUS "Using Qt5 based on the rviz_QT_VERSION: ${rviz_QT_VERSION}")
+  find_package(Qt5 ${rviz_QT_VERSION} EXACT REQUIRED Core Widgets)
+  set(QT_LIBRARIES Qt5::Widgets)
 endif()
 
-find_package(ament_cmake_auto REQUIRED)
-ament_auto_find_build_dependencies()
+catkin_package(
+  DEPENDS rviz
+)
 
-find_package(Qt5 ${rviz_QT_VERSION} EXACT REQUIRED Core Widgets)
-set(QT_LIBRARIES Qt5::Widgets)
+include_directories(
+  ${catkin_INCLUDE_DIRS}
+)
+
 
 add_definitions(-DQT_NO_KEYWORDS -g)
+
 set(CMAKE_AUTOMOC ON)
+set(SOURCE_FILES
+  src/initial_pose_button_panel.cpp
+)
 
-ament_auto_add_library(initial_pose_button_panel SHARED
-  src/initial_pose_button_panel.cpp)
-target_link_libraries(initial_pose_button_panel
-  ${QT_LIBRARIES})
+add_library(initial_pose_button_panel ${SOURCE_FILES} ${UIC_FILES})
+target_link_libraries(initial_pose_button_panel ${QT_LIBRARIES} ${catkin_LIBRARIES} ${rviz_DEFAULT_PLUGIN_LIBRARIES})
 
-# Export the plugin to be imported by rviz2
-pluginlib_export_plugin_description_file(rviz_common plugins/plugin_description.xml)
+install(TARGETS
+  ${PROJECT_NAME}
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
 
-if(BUILD_TESTING)
-find_package(ament_lint_auto REQUIRED)
-ament_lint_auto_find_test_dependencies()
-endif()
-
-ament_auto_package(
-  INSTALL_TO_SHARE
-  plugins
+install(
+  DIRECTORY
+    plugins
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )
