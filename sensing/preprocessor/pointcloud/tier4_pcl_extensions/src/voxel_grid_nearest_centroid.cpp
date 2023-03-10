@@ -1,16 +1,3 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
 /*
  * Software License Agreement (BSD License)
  *
@@ -48,17 +35,30 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  *
  */
+/*
+ * Copyright 2020 Tier IV, Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
-#include "tier4_pcl_extensions/voxel_grid_nearest_centroid_impl.hpp"
-
+#include "tier4_pcl_extensions/voxel_grid_nearest_centroid.hpp"
 #include <pcl/filters/impl/voxel_grid.hpp>
 
 #ifndef PCL_NO_PRECOMPILE
+#include <pcl/point_types.h>
 #include <pcl/impl/instantiate.hpp>
 
-#include <pcl/point_types.h>
-
 // Instantiations of specific point types
-PCL_INSTANTIATE(VoxelGridNearestCentroid, PCL_XYZ_POINT_TYPES)
+PCL_INSTANTIATE (VoxelGridNearestCentroid, PCL_XYZ_POINT_TYPES)
 
-#endif  // PCL_NO_PRECOMPILE
+#endif    // PCL_NO_PRECOMPILE

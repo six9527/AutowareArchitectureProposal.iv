@@ -1,21 +1,21 @@
-// Copyright 2021 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2020 Tier IV, Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
-#include "laserscan_to_occupancy_grid_map/updater/occupancy_grid_map_binary_bayes_filter_updater.hpp"
-
-#include "laserscan_to_occupancy_grid_map/cost_value.hpp"
-
+#include <laserscan_to_occupancy_grid_map/cost_value.h>
+#include <laserscan_to_occupancy_grid_map/updater/occupancy_grid_map_binary_bayes_filter_updater.h>
 #include <algorithm>
 
 namespace costmap_2d
@@ -25,9 +25,8 @@ inline unsigned char OccupancyGridMapBBFUpdater::applyBBF(
 {
   constexpr float cost2p = 1.f / 255.f;
   const float po = o * cost2p;
-  float pz{};
-  float not_pz{};
-  float po_hat{};
+  float pz, not_pz;
+  float po_hat;
   if (z == occupancy_cost_value::LETHAL_OBSTACLE) {
     pz = probability_matrix_(Index::OCCUPIED, Index::OCCUPIED);
     not_pz = probability_matrix_(Index::FREE, Index::OCCUPIED);
@@ -45,9 +44,11 @@ inline unsigned char OccupancyGridMapBBFUpdater::applyBBF(
     static_cast<unsigned char>(254));
 }
 
-bool OccupancyGridMapBBFUpdater::update(const Costmap2D & oneshot_occupancy_grid_map)
+bool OccupancyGridMapBBFUpdater::update(
+  const Costmap2D & oneshot_occupancy_grid_map, const geometry_msgs::Pose & robot_pose)
 {
-  updateOrigin(oneshot_occupancy_grid_map.getOriginX(), oneshot_occupancy_grid_map.getOriginY());
+  updateOrigin(
+    robot_pose.position.x - getSizeInMetersX() / 2, robot_pose.position.y - getSizeInMetersY() / 2);
   for (unsigned int x = 0; x < getSizeInCellsX(); x++) {
     for (unsigned int y = 0; y < getSizeInCellsY(); y++) {
       unsigned int index = getIndex(x, y);

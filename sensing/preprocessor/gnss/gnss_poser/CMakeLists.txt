@@ -1,55 +1,82 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.0.2)
 project(gnss_poser)
 
-### Compile options
-if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 14)
-  set(CMAKE_CXX_STANDARD_REQUIRED ON)
-  set(CMAKE_CXX_EXTENSIONS OFF)
-endif()
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic -Werror)
-endif()
+add_compile_options(-std=c++14)
 
-## Find non-ROS library
+find_package(catkin REQUIRED COMPONENTS
+  roscpp
+  tf2
+  tf2_ros
+  tf2_geometry_msgs
+  std_msgs
+  sensor_msgs
+  geometry_msgs
+  ublox_msgs
+  geo_pos_conv
+)
+
 find_package(PkgConfig)
 find_path(GeographicLib_INCLUDE_DIR GeographicLib/Config.h
   PATH_SUFFIXES GeographicLib
-)
-
+  )
 set(GeographicLib_INCLUDE_DIRS ${GeographicLib_INCLUDE_DIR})
 find_library(GeographicLib_LIBRARIES
   NAMES Geographic
 )
 
-find_package(ament_cmake_auto)
-ament_auto_find_build_dependencies()
-
-set(GNSS_POSER_HEADERS
-  include/gnss_poser/convert.hpp
-  include/gnss_poser/gnss_poser_core.hpp
-  include/gnss_poser/gnss_stat.hpp
+catkin_package(
+  INCLUDE_DIRS include
 )
 
-ament_auto_add_library(gnss_poser_node SHARED
-  src/gnss_poser_core.cpp
-  ${GNSS_POSER_HEADERS}
+###########
+## Build ##
+###########
+
+include_directories(
+  include
+  ${catkin_INCLUDE_DIRS}
+  ${GeographicLib_INCLUDE_DIRS}
+)
+link_directories(
+  /usr/local/lib
 )
 
-target_link_libraries(gnss_poser_node
-  Geographic
+add_executable(gnss_poser src/gnss_poser_node.cpp
+                          src/gnss_poser_core.cpp)
+
+
+add_dependencies(gnss_poser ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+
+ target_link_libraries(gnss_poser
+   ${catkin_LIBRARIES}
+   Geographic
+ )
+
+add_executable(fixposition_converter_node
+  src/fixposition_converter.cpp
 )
 
-rclcpp_components_register_node(gnss_poser_node
-  PLUGIN "gnss_poser::GNSSPoser"
-  EXECUTABLE gnss_poser
+target_link_libraries(fixposition_converter_node
+  ${catkin_LIBRARIES}
 )
 
-if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  ament_lint_auto_find_test_dependencies()
-endif()
+#############
+## Install ##
+#############
 
-ament_auto_package(INSTALL_TO_SHARE
-  launch
+catkin_install_python(PROGRAMS src/fixposition_converter.py
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+install(TARGETS gnss_poser
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+install(TARGETS fixposition_converter_node
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+install(
+  DIRECTORY
+    launch
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )

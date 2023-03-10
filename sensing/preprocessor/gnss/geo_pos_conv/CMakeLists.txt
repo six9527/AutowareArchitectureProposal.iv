@@ -1,28 +1,32 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.0.2)
 project(geo_pos_conv)
 
-### Compile options
-if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 14)
-  set(CMAKE_CXX_STANDARD_REQUIRED ON)
-  set(CMAKE_CXX_EXTENSIONS OFF)
-endif()
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic)
-endif()
+find_package(catkin REQUIRED COMPONENTS roscpp)
 
-### Add dependencies
-find_package(ament_cmake_auto REQUIRED)
-ament_auto_find_build_dependencies()
+catkin_package(
+  INCLUDE_DIRS include
+  LIBRARIES geo_pos_conv
+)
 
-### Create library
-ament_auto_add_library(geo_pos_conv SHARED
+include_directories(
+  include
+  ${catkin_INCLUDE_DIRS}
+)
+
+add_library(geo_pos_conv
   src/geo_pos_conv.cpp
 )
 
-if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  ament_lint_auto_find_test_dependencies()
-endif()
+target_link_libraries(geo_pos_conv
+  ${catkin_LIBRARIES}
+)
 
-ament_auto_package()
+install(DIRECTORY include/${PROJECT_NAME}/
+  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+)
+
+install(TARGETS geo_pos_conv
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)

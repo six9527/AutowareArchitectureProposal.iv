@@ -1,16 +1,18 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2020 Tier IV, Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 /*
  * Software License Agreement (BSD License)
  *
@@ -46,28 +48,26 @@
  *
  */
 
-#include "pointcloud_preprocessor/downsample_filter/random_downsample_filter_nodelet.hpp"
-
-#include <vector>
+#include "pointcloud_preprocessor/downsample_filter/random_downsample_filter_nodelet.h"
+#include <pluginlib/class_list_macros.h>
 
 namespace pointcloud_preprocessor
 {
-RandomDownsampleFilterComponent::RandomDownsampleFilterComponent(
-  const rclcpp::NodeOptions & options)
-: Filter("RandomDownsampleFilter", options)
+bool RandomDownsampleFilterNodelet::child_init(ros::NodeHandle & nh, bool & has_service)
 {
-  // set initial parameters
-  {
-    sample_num_ = static_cast<size_t>(declare_parameter("sample_num", 1500));
-  }
-
-  using std::placeholders::_1;
-  set_param_res_ = this->add_on_set_parameters_callback(
-    std::bind(&RandomDownsampleFilterComponent::paramCallback, this, _1));
+  // Enable the dynamic reconfigure service
+  has_service = true;
+  srv_ = boost::make_shared<
+    dynamic_reconfigure::Server<pointcloud_preprocessor::RandomDownsampleFilterConfig> >(nh);
+  dynamic_reconfigure::Server<
+    pointcloud_preprocessor::RandomDownsampleFilterConfig>::CallbackType f =
+    boost::bind(&RandomDownsampleFilterNodelet::config_callback, this, _1, _2);
+  srv_->setCallback(f);
+  return (true);
 }
 
-void RandomDownsampleFilterComponent::filter(
-  const PointCloud2ConstPtr & input, const IndicesPtr & /*indices*/, PointCloud2 & output)
+void RandomDownsampleFilterNodelet::filter(
+  const PointCloud2::ConstPtr & input, const IndicesPtr & indices, PointCloud2 & output)
 {
   boost::mutex::scoped_lock lock(mutex_);
   pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_input(new pcl::PointCloud<pcl::PointXYZ>);
@@ -84,22 +84,35 @@ void RandomDownsampleFilterComponent::filter(
   output.header = input->header;
 }
 
-rcl_interfaces::msg::SetParametersResult RandomDownsampleFilterComponent::paramCallback(
-  const std::vector<rclcpp::Parameter> & p)
+void RandomDownsampleFilterNodelet::subscribe() { Filter::subscribe(); }
+
+void RandomDownsampleFilterNodelet::unsubscribe() { Filter::unsubscribe(); }
+
+void RandomDownsampleFilterNodelet::config_callback(
+  pointcloud_preprocessor::RandomDownsampleFilterConfig & config, uint32_t level)
 {
   boost::mutex::scoped_lock lock(mutex_);
 
-  if (get_param(p, "sample_num", sample_num_)) {
-    RCLCPP_DEBUG(get_logger(), "Setting new sample num to: %zu.", sample_num_);
+  if (sample_num_ != config.sample_num) {
+    sample_num_ = config.sample_num;
+    NODELET_DEBUG(
+      "[%s::config_callback] Setting new sample_num threshold to: %d.", getName().c_str(),
+      config.sample_num);
   }
-
-  rcl_interfaces::msg::SetParametersResult result;
-  result.successful = true;
-  result.reason = "success";
-
-  return result;
+  // ---[ These really shouldn't be here, and as soon as dynamic_reconfigure improves, we'll remove them and inherit
+  // from Filter
+  if (tf_input_frame_ != config.input_frame) {
+    tf_input_frame_ = config.input_frame;
+    NODELET_DEBUG("[config_callback] Setting the input TF frame to: %s.", tf_input_frame_.c_str());
+  }
+  if (tf_output_frame_ != config.output_frame) {
+    tf_output_frame_ = config.output_frame;
+    NODELET_DEBUG(
+      "[config_callback] Setting the output TF frame to: %s.", tf_output_frame_.c_str());
+  }
+  // ]---
 }
 
 }  // namespace pointcloud_preprocessor
-#include <rclcpp_components/register_node_macro.hpp>
-RCLCPP_COMPONENTS_REGISTER_NODE(pointcloud_preprocessor::RandomDownsampleFilterComponent)
+
+PLUGINLIB_EXPORT_CLASS(pointcloud_preprocessor::RandomDownsampleFilterNodelet, nodelet::Nodelet);

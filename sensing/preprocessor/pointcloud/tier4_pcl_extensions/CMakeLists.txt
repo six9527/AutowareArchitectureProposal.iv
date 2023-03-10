@@ -1,35 +1,30 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.0.2)
 project(tier4_pcl_extensions)
 
-### Compile options
-if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 14)
-  set(CMAKE_CXX_STANDARD_REQUIRED ON)
-  set(CMAKE_CXX_EXTENSIONS OFF)
-endif()
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic -Werror)
-endif()
+add_compile_options(-std=c++14)
 
-find_package(ament_cmake_auto REQUIRED)
+find_package(catkin REQUIRED)
 find_package(PCL REQUIRED COMPONENTS common)
 
-find_package(eigen3_cmake_module REQUIRED)
-find_package(Eigen3 REQUIRED)
+catkin_package(INCLUDE_DIRS include)
 
-include_directories(${PCL_INCLUDE_DIRS})
+include_directories(include ${PCL_INCLUDE_DIRS})
 link_directories(${PCL_LIBRARY_DIRS})
 add_definitions(${PCL_DEFINITIONS})
 
-ament_auto_add_library(tier4_pcl_extensions SHARED
-  src/voxel_grid_nearest_centroid.cpp
+add_library(tier4_pcl_extensions src/voxel_grid_nearest_centroid.cpp)
+
+target_link_libraries(tier4_pcl_extensions ${catkin_LIBRARIES})
+
+install(
+  TARGETS
+  tier4_pcl_extensions
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
-target_link_libraries(tier4_pcl_extensions ${PCL_LIBRARIES})
-
-if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  ament_lint_auto_find_test_dependencies()
-endif()
-
-ament_auto_package()
+install(
+  DIRECTORY include/${PROJECT_NAME}/
+  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+)

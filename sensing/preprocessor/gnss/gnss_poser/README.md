@@ -1,51 +1,54 @@
 # gnss_poser
 
-## Purpose
+## Overview
 
-The `gnss_poser` is a node that subscribes gnss sensing messages and calculates vehicle pose with covariance.
+This is package to use GNSS with ROS messages.
 
-## Inner-workings / Algorithms
+## Install
 
-## Inputs / Outputs
+### GeographicLib
 
-### Input
+This package use GeographicLib to calculate coordinates.
 
-| Name             | Type                          | Description                                                                                     |
-| ---------------- | ----------------------------- | ----------------------------------------------------------------------------------------------- |
-| `~/input/fix`    | `sensor_msgs::msg::NavSatFix` | gnss status message                                                                             |
-| `~/input/navpvt` | `ublox_msgs::msg::NavPVT`     | position, velocity and time solution (You can see detail description in reference document [1]) |
+1. Download files from <https://sourceforge.net/projects/geographiclib/files/distrib/>
+2. Build and install Geographiclib
 
-### Output
+        tar xfpz GeographicLib-1.50.1.
+        cd GeographicLib-1.50.1
+        mkdir BUILD
+        cd BUILD
+        ../configure --prefix=/usr
+        make
+        sudo make install
+        sudo cp /usr/share/cmake/GeographicLib/FindGeographicLib.cmake /usr/share/cmake-3.5/Modules
+3. install geoid datasets
 
-| Name                     | Type                                            | Description                                                    |
-| ------------------------ | ----------------------------------------------- | -------------------------------------------------------------- |
-| `~/output/pose`          | `geometry_msgs::msg::PoseStamped`               | vehicle pose calculated from gnss sensing data                 |
-| `~/output/gnss_pose_cov` | `geometry_msgs::msg::PoseWithCovarianceStamped` | vehicle pose with covariance calculated from gnss sensing data |
-| `~/output/gnss_fixed`    | `autoware_debug_msgs::msg::BoolStamped`         | gnss fix status                                                |
+        geographiclib-get-geoids best
 
-## Parameters
+### Ublox
 
-### Core Parameters
+If you use ublox GNSS receiver, install below package.
+This allows to obtain heading while vehicle is stopping.
 
-| Name                 | Type   | Default Value    | Description                                                                                     |
-| -------------------- | ------ | ---------------- | ----------------------------------------------------------------------------------------------- |
-| `base_frame`         | string | "base_link"      | frame d                                                                                         |
-| `gnss_frame`         | string | "gnss"           | frame id                                                                                        |
-| `gnss_base_frame`    | string | "gnss_base_link" | frame id                                                                                        |
-| `map_frame`          | string | "map"            | frame id                                                                                        |
-| `use_ublox_receiver` | bool   | false            | flag to use ublox receiver                                                                      |
-| `plane_zone`         | int    | 9                | identification number of the plane rectangular coordinate systems (See, reference document [2]) |
+1. Download package <https://github.com/KumarRobotics/ublox.git>
+2. build package
 
-## Assumptions / Known limits
+### gnss_poser package
 
-## (Optional) Error detection and handling
+This package use gnss package in autoware.
 
-## (Optional) Performance characterization
+1. download and build Autoware
+2. download and build this package
 
-## (Optional) References/External links
+## Usage
 
-[1] <https://github.com/KumarRobotics/ublox.git>
+    roslaunch gnss_poser gnss_poser.launch
+For ublox GNSS receiver
 
-[2] <https://www.gsi.go.jp/LAW/heimencho.html>
+    roslaunch gnss_poser ubloxfix2mgrs.launch
 
-## (Optional) Future extensions / Unimplemented parts
+## Configuration
+
+This package use egm2008-1 for geoid datasets.
+
+Parameters can be set in Launch file.

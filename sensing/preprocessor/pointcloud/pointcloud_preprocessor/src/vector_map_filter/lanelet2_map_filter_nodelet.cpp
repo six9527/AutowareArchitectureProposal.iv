@@ -1,125 +1,92 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-#include "pointcloud_preprocessor/vector_map_filter/lanelet2_map_filter_nodelet.hpp"
-
-#include "pointcloud_preprocessor/filter.hpp"
-
-#include <pcl_ros/transforms.hpp>
-
+/*
+ * Copyright 2020 Tier IV, Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+#include "pointcloud_preprocessor/vector_map_filter/lanelet2_map_filter_nodelet.h"
+#include <lanelet2_core/geometry/Polygon.h>
 #include <boost/geometry/algorithms/convex_hull.hpp>
 #include <boost/geometry/algorithms/intersects.hpp>
 
-#include <lanelet2_core/geometry/Polygon.h>
-#include <tf2_ros/create_timer_ros.h>
-
-#include <memory>
-#include <string>
-#include <unordered_map>
-#include <utility>
-#include <vector>
-
 namespace pointcloud_preprocessor
 {
-Lanelet2MapFilterComponent::Lanelet2MapFilterComponent(const rclcpp::NodeOptions & node_options)
-: Node("LaneletMapFilter", node_options)
+void Lanelet2MapFilterNodelet::onInit()
 {
-  using std::placeholders::_1;
+  nh_ = getNodeHandle();
+  pnh_ = getPrivateNodeHandle();
 
-  // Set parameters
-  {
-    voxel_size_x_ = declare_parameter("voxel_size_x", 0.04);
-    voxel_size_y_ = declare_parameter("voxel_size_y", 0.04);
+  map_sub_ = pnh_.subscribe("input/vector_map", 1, &Lanelet2MapFilterNodelet::mapCallback, this);
+  pointcloud_sub_ =
+    pnh_.subscribe("input/pointcloud", 1, &Lanelet2MapFilterNodelet::pointcloudCallback, this);
+  filtered_pointcloud_pub_ = pnh_.advertise<sensor_msgs::PointCloud2>("output", 1);
+
+  srv_ = std::make_shared<
+    dynamic_reconfigure::Server<pointcloud_preprocessor::Lanelet2MapFilterConfig>>();
+  dynamic_reconfigure::Server<pointcloud_preprocessor::Lanelet2MapFilterConfig>::CallbackType f =
+    boost::bind(&Lanelet2MapFilterNodelet::config_callback, this, _1, _2);
+  srv_->setCallback(f);
+}
+
+void Lanelet2MapFilterNodelet::config_callback(
+  pointcloud_preprocessor::Lanelet2MapFilterConfig & config, uint32_t level)
+{
+  if (voxel_size_x_ != config.voxel_size_x) {
+    voxel_size_x_ = config.voxel_size_x;
+    NODELET_DEBUG(
+      "[%s::config_callback] Setting voxel_size_x to: %lf.", getName().c_str(),
+      config.voxel_size_x);
   }
 
-  // Set publisher
-  {
-    filtered_pointcloud_pub_ =
-      this->create_publisher<PointCloud2>("output", rclcpp::SensorDataQoS());
+  if (voxel_size_y_ != config.voxel_size_y) {
+    voxel_size_y_ = config.voxel_size_y;
+    NODELET_DEBUG(
+      "[%s::config_callback] Setting voxel_size_y to: %lf.", getName().c_str(),
+      config.voxel_size_y);
   }
 
-  // Set subscriber
-  {
-    map_sub_ = this->create_subscription<autoware_auto_mapping_msgs::msg::HADMapBin>(
-      "input/vector_map", rclcpp::QoS{1}.transient_local(),
-      std::bind(&Lanelet2MapFilterComponent::mapCallback, this, _1));
-    pointcloud_sub_ = this->create_subscription<PointCloud2>(
-      "input/pointcloud", rclcpp::SensorDataQoS(),
-      std::bind(&Lanelet2MapFilterComponent::pointcloudCallback, this, _1));
-  }
-
-  // Set parameter reconfigure
-  {
-    set_param_res_ = this->add_on_set_parameters_callback(
-      std::bind(&Lanelet2MapFilterComponent::paramCallback, this, _1));
-  }
-
-  // Set tf
-  {
-    rclcpp::Clock::SharedPtr ros_clock = std::make_shared<rclcpp::Clock>(RCL_ROS_TIME);
-    tf_buffer_ = std::make_shared<tf2_ros::Buffer>(ros_clock);
-    auto timer_interface = std::make_shared<tf2_ros::CreateTimerROS>(
-      get_node_base_interface(), get_node_timers_interface());
-    tf_buffer_->setCreateTimerInterface(timer_interface);
-    tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+  if (voxel_size_z_ != config.voxel_size_z) {
+    voxel_size_z_ = config.voxel_size_z;
+    NODELET_DEBUG(
+      "[%s::config_callback] Setting voxel_size_z to: %lf.", getName().c_str(),
+      config.voxel_size_z);
   }
 }
 
-rcl_interfaces::msg::SetParametersResult Lanelet2MapFilterComponent::paramCallback(
-  const std::vector<rclcpp::Parameter> & p)
-{
-  if (get_param(p, "voxel_size_x", voxel_size_x_)) {
-    RCLCPP_DEBUG(get_logger(), "Setting voxel_size_x to: %f.", voxel_size_x_);
-  }
-
-  if (get_param(p, "voxel_size_y", voxel_size_y_)) {
-    RCLCPP_DEBUG(get_logger(), "Setting voxel_size_y to: %f.", voxel_size_y_);
-  }
-
-  rcl_interfaces::msg::SetParametersResult result;
-  result.successful = true;
-  result.reason = "success";
-
-  return result;
-}
-
-bool Lanelet2MapFilterComponent::transformPointCloud(
-  const std::string & in_target_frame, const PointCloud2ConstPtr & in_cloud_ptr,
-  PointCloud2 * out_cloud_ptr)
+bool Lanelet2MapFilterNodelet::transformPointCloud(
+  const std::string & in_target_frame, const sensor_msgs::PointCloud2::ConstPtr & in_cloud_ptr,
+  sensor_msgs::PointCloud2 * out_cloud_ptr)
 {
   if (in_target_frame == in_cloud_ptr->header.frame_id) {
     *out_cloud_ptr = *in_cloud_ptr;
     return true;
   }
 
-  geometry_msgs::msg::TransformStamped transform_stamped;
+  geometry_msgs::TransformStamped transform_stamped;
   try {
-    transform_stamped = tf_buffer_->lookupTransform(
+    transform_stamped = tf_buffer_.lookupTransform(
       in_target_frame, in_cloud_ptr->header.frame_id, in_cloud_ptr->header.stamp,
-      rclcpp::Duration::from_seconds(1.0));
+      ros::Duration(1.0));
   } catch (tf2::TransformException & ex) {
-    RCLCPP_WARN(this->get_logger(), "%s", ex.what());
+    ROS_WARN("%s", ex.what());
     return false;
   }
-  // tf2::doTransform(*in_cloud_ptr, *out_cloud_ptr, transform_stamped);
   Eigen::Matrix4f mat = tf2::transformToEigen(transform_stamped.transform).matrix().cast<float>();
   pcl_ros::transformPointCloud(mat, *in_cloud_ptr, *out_cloud_ptr);
   out_cloud_ptr->header.frame_id = in_target_frame;
   return true;
 }
 
-LinearRing2d Lanelet2MapFilterComponent::getConvexHull(
+LinearRing2d Lanelet2MapFilterNodelet::getConvexHull(
   const pcl::PointCloud<pcl::PointXYZ>::Ptr & input_cloud)
 {
   // downsample pointcloud to reduce convex hull calculation cost
@@ -141,7 +108,7 @@ LinearRing2d Lanelet2MapFilterComponent::getConvexHull(
   return convex_hull;
 }
 
-lanelet::ConstLanelets Lanelet2MapFilterComponent::getIntersectedLanelets(
+lanelet::ConstLanelets Lanelet2MapFilterNodelet::getIntersectedLanelets(
   const LinearRing2d & convex_hull, const lanelet::ConstLanelets & road_lanelets)
 {
   lanelet::ConstLanelets intersected_lanelets;
@@ -153,7 +120,7 @@ lanelet::ConstLanelets Lanelet2MapFilterComponent::getIntersectedLanelets(
   return intersected_lanelets;
 }
 
-bool Lanelet2MapFilterComponent::pointWithinLanelets(
+bool Lanelet2MapFilterNodelet::pointWithinLanelets(
   const Point2d & point, const lanelet::ConstLanelets & intersected_lanelets)
 {
   for (const auto & lanelet : intersected_lanelets) {
@@ -164,50 +131,41 @@ bool Lanelet2MapFilterComponent::pointWithinLanelets(
   return false;
 }
 
-pcl::PointCloud<pcl::PointXYZ> Lanelet2MapFilterComponent::getLaneFilteredPointCloud(
+pcl::PointCloud<pcl::PointXYZ> Lanelet2MapFilterNodelet::getLaneFilteredPointCloud(
   const lanelet::ConstLanelets & intersected_lanelets,
   const pcl::PointCloud<pcl::PointXYZ>::Ptr & cloud)
 {
   pcl::PointCloud<pcl::PointXYZ> filtered_cloud;
 
   filtered_cloud.header = cloud->header;
-  pcl::PointCloud<pcl::PointXYZ>::Ptr centralized_cloud(new pcl::PointCloud<pcl::PointXYZ>);
-  centralized_cloud->reserve(cloud->size());
   pcl::PointCloud<pcl::PointXYZ>::Ptr downsampled_cloud(new pcl::PointCloud<pcl::PointXYZ>);
-
-  // The coordinates of the point cloud are too large, resulting in calculation errors,
-  // so offset them to the center.
-  // https://github.com/PointCloudLibrary/pcl/issues/4895
-  Eigen::Vector4f centroid;
-  pcl::compute3DCentroid(*cloud, centroid);
-  for (const auto & p : cloud->points) {
-    centralized_cloud->points.push_back(
-      pcl::PointXYZ(p.x - centroid[0], p.y - centroid[1], p.z - centroid[2]));
-  }
-
   pcl::VoxelGrid<pcl::PointXYZ> voxel_grid;
   voxel_grid.setLeafSize(voxel_size_x_, voxel_size_y_, 100000.0);
-  voxel_grid.setInputCloud(centralized_cloud);
+  voxel_grid.setInputCloud(cloud);
   voxel_grid.setSaveLeafLayout(true);
   voxel_grid.filter(*downsampled_cloud);
 
   std::unordered_map<size_t, pcl::PointCloud<pcl::PointXYZ>> downsampled2original_map;
-  for (const auto & p : centralized_cloud->points) {
+  for (const auto & p : cloud->points) {
     if (std::isnan(p.x) || std::isnan(p.y) || std::isnan(p.z)) {
       continue;
     }
-    const size_t index = voxel_grid.getCentroidIndex(p);
+    const int index = voxel_grid.getCentroidIndexAt(voxel_grid.getGridCoordinates(p.x, p.y, p.z));
+    if (index == -1) {
+      continue;
+    }
     downsampled2original_map[index].points.push_back(p);
   }
 
-  for (auto & point : downsampled_cloud->points) {
-    if (pointWithinLanelets(
-          Point2d(point.x + centroid[0], point.y + centroid[1]), intersected_lanelets)) {
-      const size_t index = voxel_grid.getCentroidIndex(point);
-      for (auto & original_point : downsampled2original_map[index].points) {
-        original_point.x += centroid[0];
-        original_point.y += centroid[1];
-        original_point.z += centroid[2];
+  for (const auto & point : downsampled_cloud->points) {
+    Point2d boost_point(point.x, point.y);
+    if (pointWithinLanelets(boost_point, intersected_lanelets)) {
+      const int index =
+        voxel_grid.getCentroidIndexAt(voxel_grid.getGridCoordinates(point.x, point.y, point.z));
+      if (index == -1) {
+        continue;
+      }
+      for (const auto & original_point : downsampled2original_map[index].points) {
         filtered_cloud.points.push_back(original_point);
       }
     }
@@ -216,23 +174,23 @@ pcl::PointCloud<pcl::PointXYZ> Lanelet2MapFilterComponent::getLaneFilteredPointC
   return filtered_cloud;
 }
 
-void Lanelet2MapFilterComponent::pointcloudCallback(const PointCloud2ConstPtr cloud_msg)
+void Lanelet2MapFilterNodelet::pointcloudCallback(
+  const sensor_msgs::PointCloud2::ConstPtr & cloud_msg)
 {
   if (!lanelet_map_ptr_) {
     return;
   }
   // transform pointcloud to map frame
-  PointCloud2Ptr input_transformed_cloud_ptr(new sensor_msgs::msg::PointCloud2);
-  if (!transformPointCloud("map", cloud_msg, input_transformed_cloud_ptr.get())) {
-    RCLCPP_ERROR_STREAM_THROTTLE(
-      this->get_logger(), *this->get_clock(), std::chrono::milliseconds(10000).count(),
-      "Failed transform from "
-        << "map"
-        << " to " << cloud_msg->header.frame_id);
+  sensor_msgs::PointCloud2::Ptr input_transed_cloud_ptr(new sensor_msgs::PointCloud2);
+  if (!transformPointCloud("map", cloud_msg, input_transed_cloud_ptr.get())) {
+    ROS_ERROR_STREAM_THROTTLE(
+      10, "Failed transform from "
+            << "map"
+            << " to " << cloud_msg->header.frame_id);
     return;
   }
   pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
-  pcl::fromROSMsg(*input_transformed_cloud_ptr, *cloud);
+  pcl::fromROSMsg(*input_transed_cloud_ptr, *cloud);
   if (cloud->points.empty()) {
     return;
   }
@@ -243,31 +201,29 @@ void Lanelet2MapFilterComponent::pointcloudCallback(const PointCloud2ConstPtr cl
   // filter pointcloud by lanelet
   const auto filtered_cloud = getLaneFilteredPointCloud(intersected_lanelets, cloud);
   // transform pointcloud to input frame
-  PointCloud2Ptr output_cloud_ptr(new sensor_msgs::msg::PointCloud2);
+  sensor_msgs::PointCloud2::Ptr output_cloud_ptr(new sensor_msgs::PointCloud2);
   pcl::toROSMsg(filtered_cloud, *output_cloud_ptr);
-  PointCloud2Ptr output_transformed_cloud_ptr(new sensor_msgs::msg::PointCloud2);
+  sensor_msgs::PointCloud2::Ptr output_transed_cloud_ptr(new sensor_msgs::PointCloud2);
   if (!transformPointCloud(
-        cloud_msg->header.frame_id, output_cloud_ptr, output_transformed_cloud_ptr.get())) {
-    RCLCPP_ERROR_STREAM_THROTTLE(
-      this->get_logger(), *this->get_clock(), std::chrono::milliseconds(10000).count(),
-      "Failed transform from " << cloud_msg->header.frame_id << " to "
-                               << output_cloud_ptr->header.frame_id);
+        cloud_msg->header.frame_id, output_cloud_ptr, output_transed_cloud_ptr.get())) {
+    ROS_ERROR_STREAM_THROTTLE(
+      10, "Failed transform from "
+            << "map"
+            << " to " << output_cloud_ptr->header.frame_id);
     return;
   }
-  auto output = std::make_unique<sensor_msgs::msg::PointCloud2>(*output_transformed_cloud_ptr);
-  filtered_pointcloud_pub_->publish(std::move(output));
+  filtered_pointcloud_pub_.publish(*output_transed_cloud_ptr);
 }
 
-void Lanelet2MapFilterComponent::mapCallback(
-  const autoware_auto_mapping_msgs::msg::HADMapBin::ConstSharedPtr map_msg)
+void Lanelet2MapFilterNodelet::mapCallback(const autoware_lanelet2_msgs::MapBin & map_msg)
 {
   lanelet_map_ptr_ = std::make_shared<lanelet::LaneletMap>();
-  lanelet::utils::conversion::fromBinMsg(*map_msg, lanelet_map_ptr_);
+  lanelet::utils::conversion::fromBinMsg(map_msg, lanelet_map_ptr_);
   const lanelet::ConstLanelets all_lanelets = lanelet::utils::query::laneletLayer(lanelet_map_ptr_);
   road_lanelets_ = lanelet::utils::query::roadLanelets(all_lanelets);
 }
 
 }  // namespace pointcloud_preprocessor
 
-#include <rclcpp_components/register_node_macro.hpp>
-RCLCPP_COMPONENTS_REGISTER_NODE(pointcloud_preprocessor::Lanelet2MapFilterComponent)
+#include <pluginlib/class_list_macros.h>
+PLUGINLIB_EXPORT_CLASS(pointcloud_preprocessor::Lanelet2MapFilterNodelet, nodelet::Nodelet)

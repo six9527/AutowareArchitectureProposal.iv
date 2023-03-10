@@ -1,44 +1,61 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.0.2)
 project(livox_tag_filter)
 
-if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 14)
-  set(CMAKE_CXX_STANDARD_REQUIRED ON)
-  set(CMAKE_CXX_EXTENSIONS OFF)
-endif()
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic)
-endif()
+add_compile_options(-std=c++14)
 
-### Dependencies
-find_package(ament_cmake_auto REQUIRED)
-ament_auto_find_build_dependencies()
+find_package(catkin REQUIRED COMPONENTS
+  pcl_ros
+  roscpp
+  sensor_msgs
+)
 
-find_package(PCL REQUIRED)
-include_directories(${PCL_INCLUDE_DIRS})
+catkin_package(
+  INCLUDE_DIRS
+    include
+  CATKIN_DEPENDS
+    pcl_ros
+    sensor_msgs
+)
+
+include_directories(
+  include
+  ${catkin_INCLUDE_DIRS}
+)
 
 # Target
 ## livox_tag_filter_node
-ament_auto_add_library(livox_tag_filter SHARED
+add_executable(livox_tag_filter_node
+  src/livox_tag_filter_node/main.cpp
   src/livox_tag_filter_node/livox_tag_filter_node.cpp
 )
 
-target_link_libraries(livox_tag_filter
-  ${PCL_LIBRARIES}
+target_link_libraries(livox_tag_filter_node
+  ${catkin_LIBRARIES}
 )
 
-rclcpp_components_register_node(livox_tag_filter
-  PLUGIN "livox_tag_filter::LivoxTagFilterNode"
-  EXECUTABLE livox_tag_filter_node
+add_dependencies(livox_tag_filter_node
+  ${${PROJECT_NAME}_EXPORTED_TARGETS}
+  ${catkin_EXPORTED_TARGETS}
 )
-
-if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  ament_lint_auto_find_test_dependencies()
-endif()
 
 # Install
 ## executables and libraries
-ament_auto_package(INSTALL_TO_SHARE
-  launch
+install(
+  TARGETS
+    livox_tag_filter_node
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+## project namespaced headers
+install(DIRECTORY include/${PROJECT_NAME}/
+  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+)
+
+## directories
+install(
+  DIRECTORY
+    launch
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )
