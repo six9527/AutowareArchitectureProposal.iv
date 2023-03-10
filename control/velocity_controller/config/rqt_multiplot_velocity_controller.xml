@@ -569,7 +569,7 @@
                                         <type>0</type>
                                     </scale>
                                     <topic>/pacmod/as_rx/accel_cmd</topic>
-                                    <type>pacmod3_msgs/SystemCmdFloat</type>
+                                    <type>pacmod_msgs/SystemCmdFloat</type>
                                 </x_axis>
                                 <y_axis>
                                     <field>command</field>
@@ -582,7 +582,7 @@
                                         <type>0</type>
                                     </scale>
                                     <topic>/pacmod/as_rx/accel_cmd</topic>
-                                    <type>pacmod3_msgs/SystemCmdFloat</type>
+                                    <type>pacmod_msgs/SystemCmdFloat</type>
                                 </y_axis>
                             </axes>
                             <color>
@@ -620,7 +620,7 @@
                                         <type>0</type>
                                     </scale>
                                     <topic>/pacmod/as_rx/brake_cmd</topic>
-                                    <type>pacmod3_msgs/SystemCmdFloat</type>
+                                    <type>pacmod_msgs/SystemCmdFloat</type>
                                 </x_axis>
                                 <y_axis>
                                     <field>command</field>
@@ -633,7 +633,7 @@
                                         <type>0</type>
                                     </scale>
                                     <topic>/pacmod/as_rx/brake_cmd</topic>
-                                    <type>pacmod3_msgs/SystemCmdFloat</type>
+                                    <type>pacmod_msgs/SystemCmdFloat</type>
                                 </y_axis>
                             </axes>
                             <color>
@@ -973,11 +973,11 @@
                                         <relative_minimum>-1000</relative_minimum>
                                         <type>0</type>
                                     </scale>
-                                    <topic>/control/trajectory_follower/velocity_controller/debug_values</topic>
-                                    <type>std_msgs/Float32MultiArray</type>
+                                    <topic>/planning/scenario_planning/motion_velocity_optimizer/distance_to_stopline</topic>
+                                    <type>std_msgs/Float32</type>
                                 </x_axis>
                                 <y_axis>
-                                    <field>data/28</field>
+                                    <field>data</field>
                                     <field_type>0</field_type>
                                     <scale>
                                         <absolute_maximum>1000</absolute_maximum>
@@ -986,8 +986,8 @@
                                         <relative_minimum>-1000</relative_minimum>
                                         <type>0</type>
                                     </scale>
-                                    <topic>/control/trajectory_follower/velocity_controller/debug_values</topic>
-                                    <type>std_msgs/Float32MultiArray</type>
+                                    <topic>/planning/scenario_planning/motion_velocity_optimizer/distance_to_stopline</topic>
+                                    <type>std_msgs/Float32</type>
                                 </y_axis>
                             </axes>
                             <color>
@@ -1086,7 +1086,7 @@
                                 <type>0</type>
                             </style>
                             <subscriber_queue_size>100</subscriber_queue_size>
-                            <title>state 0:Drive 1: Stopping 2:Stopped 3:Emergency</title>
+                            <title>state 0:Init 1:Ctrl 2:Stopped 3:SmoothStop 4:Emergency 5:Error</title>
                         </curve_0>
                     </curves>
                     <legend>

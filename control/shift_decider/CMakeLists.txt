@@ -1,30 +1,40 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.0.2)
 project(shift_decider)
 
-find_package(ament_cmake_auto REQUIRED)
-ament_auto_find_build_dependencies()
+add_compile_options(-std=c++14)
 
-if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 14)
-  set(CMAKE_CXX_STANDARD_REQUIRED ON)
-  set(CMAKE_CXX_EXTENSIONS OFF)
-endif()
-
-ament_auto_add_library(shift_decider_node SHARED
-  src/shift_decider.cpp
+find_package(
+  catkin REQUIRED COMPONENTS
+    autoware_control_msgs
+    autoware_vehicle_msgs
+    roscpp
 )
 
-rclcpp_components_register_node(shift_decider_node
-  PLUGIN "ShiftDecider"
-  EXECUTABLE shift_decider
+catkin_package(
+  INCLUDE_DIRS include
+  CATKIN_DEPENDS
+    autoware_control_msgs
+    autoware_vehicle_msgs
+    roscpp
 )
 
-if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  ament_lint_auto_find_test_dependencies()
-endif()
+include_directories(
+  include
+  ${catkin_INCLUDE_DIRS}
+)
 
-ament_auto_package(
-  INSTALL_TO_SHARE
-  launch
+add_executable(shift_decider src/shift_decider.cpp src/main.cpp)
+target_link_libraries(shift_decider ${catkin_LIBRARIES})
+add_dependencies(shift_decider ${catkin_EXPORTED_TARGETS})
+
+install(
+  TARGETS shift_decider
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+install(
+  DIRECTORY launch
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )

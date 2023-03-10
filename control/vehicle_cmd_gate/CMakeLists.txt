@@ -1,50 +1,50 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.0.2)
 project(vehicle_cmd_gate)
 
-### Compile options
-if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 14)
-  set(CMAKE_CXX_STANDARD_REQUIRED ON)
-  set(CMAKE_CXX_EXTENSIONS OFF)
-endif()
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic -Werror)
-endif()
+add_compile_options(-std=c++14)
 
-### Dependencies
-find_package(ament_cmake_auto REQUIRED)
-ament_auto_find_build_dependencies()
-
-# Generate exe file
-ament_auto_add_library(vehicle_cmd_gate_node SHARED
-  src/vehicle_cmd_gate.cpp
-  src/vehicle_cmd_filter.cpp
-)
-
-rclcpp_components_register_node(vehicle_cmd_gate_node
-  PLUGIN "VehicleCmdGate"
-  EXECUTABLE vehicle_cmd_gate
-)
-
-if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  ament_lint_auto_find_test_dependencies()
-
-  ament_add_gtest(test_vehicle_cmd_gate
-    test/src/test_main.cpp
-    test/src/test_vehicle_cmd_filter.cpp
-  )
-  ament_target_dependencies(test_vehicle_cmd_gate
-    rclcpp
+find_package(
+  catkin REQUIRED COMPONENTS
     autoware_control_msgs
-  )
-  target_link_libraries(test_vehicle_cmd_gate
-    vehicle_cmd_gate_node
-  )
-endif()
+    autoware_vehicle_msgs
+    geometry_msgs
+    roscpp
+    rostest
+    rosunit
+    roslint
+    std_msgs
+    std_srvs
+)
 
-ament_auto_package(
-  INSTALL_TO_SHARE
+catkin_package(
+  INCLUDE_DIRS include
+  CATKIN_DEPENDS
+    autoware_control_msgs
+    autoware_vehicle_msgs
+    geometry_msgs
+    std_msgs
+    std_srvs
+)
+
+include_directories(
+  include
+  ${catkin_INCLUDE_DIRS}
+)
+
+add_executable(vehicle_cmd_gate src/vehicle_cmd_gate_node.cpp src/vehicle_cmd_gate.cpp src/vehicle_cmd_filter.cpp)
+target_link_libraries(vehicle_cmd_gate ${catkin_LIBRARIES})
+add_dependencies(vehicle_cmd_gate ${catkin_EXPORTED_TARGETS})
+
+install(
+  TARGETS vehicle_cmd_gate
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+install(
+  DIRECTORY
     launch
     config
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )
