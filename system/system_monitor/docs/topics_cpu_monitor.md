@@ -9,6 +9,8 @@
 | level | message |
 | ----- | ------- |
 | OK    | OK      |
+| WARN  | warm    |
+| ERROR | hot     |
 
 <b>[values]</b>
 

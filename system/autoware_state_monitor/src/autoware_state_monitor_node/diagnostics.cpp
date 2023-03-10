@@ -1,56 +1,51 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2020 Tier IV, Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
-#include "autoware_state_monitor/autoware_state_monitor_node.hpp"
+#include <autoware_state_monitor/autoware_state_monitor_node.h>
 
-#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
-
-#include <string>
-#include <vector>
-
-#define FMT_HEADER_ONLY
 #include <fmt/format.h>
 
 void AutowareStateMonitorNode::setupDiagnosticUpdater()
 {
   updater_.setHardwareID("autoware_state_monitor");
 
-  const auto module_names = this->declare_parameter<std::vector<std::string>>("module_names");
+  std::vector<std::string> module_names;
+  private_nh_.param("module_names", module_names, {});
 
   // Topic
   for (const auto & module_name : module_names) {
     const auto diag_name = fmt::format("{}_topic_status", module_name);
 
     updater_.add(
-      diag_name,
-      std::bind(
-        &AutowareStateMonitorNode::checkTopicStatus, this, std::placeholders::_1, module_name));
+      diag_name, boost::bind(&AutowareStateMonitorNode::checkTopicStatus, this, _1, module_name));
   }
 
   // TF
   updater_.add(
     "localization_tf_status",
-    std::bind(
-      &AutowareStateMonitorNode::checkTFStatus, this, std::placeholders::_1, "localization"));
+    boost::bind(&AutowareStateMonitorNode::checkTfStatus, this, _1, "localization"));
 }
 
 void AutowareStateMonitorNode::checkTopicStatus(
   diagnostic_updater::DiagnosticStatusWrapper & stat, const std::string & module_name)
 {
-  int8_t level = diagnostic_msgs::msg::DiagnosticStatus::OK;
+  int8_t level = diagnostic_msgs::DiagnosticStatus::OK;
 
   const auto & topic_stats = state_input_.topic_stats;
+  const auto & tf_stats = state_input_.tf_stats;
 
   // OK
   for (const auto & topic_config : topic_stats.ok_list) {
@@ -69,7 +64,7 @@ void AutowareStateMonitorNode::checkTopicStatus(
 
     stat.add(fmt::format("{} status", topic_config.name), "Not Received");
 
-    level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
+    level = diagnostic_msgs::DiagnosticStatus::ERROR;
   }
 
   // Check topic rate
@@ -86,7 +81,7 @@ void AutowareStateMonitorNode::checkTopicStatus(
     stat.addf(fmt::format("{} warn_rate", name), "%.2f [Hz]", topic_config.warn_rate);
     stat.addf(fmt::format("{} measured_rate", name), "%.2f [Hz]", topic_rate);
 
-    level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
+    level = diagnostic_msgs::DiagnosticStatus::WARN;
   }
 
   // Check topic timeout
@@ -101,30 +96,31 @@ void AutowareStateMonitorNode::checkTopicStatus(
     const auto & name = topic_config.name;
     stat.add(fmt::format("{} status", name), "Timeout");
     stat.addf(fmt::format("{} timeout", name), "%.2f [s]", topic_config.timeout);
-    stat.addf(fmt::format("{} checked_time", name), "%.2f [s]", topic_stats.checked_time.seconds());
-    stat.addf(fmt::format("{} last_received_time", name), "%.2f [s]", last_received_time.seconds());
+    stat.addf(fmt::format("{} checked_time", name), "%.2f [s]", topic_stats.checked_time.toSec());
+    stat.addf(fmt::format("{} last_received_time", name), "%.2f [s]", last_received_time.toSec());
 
-    level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
+    level = diagnostic_msgs::DiagnosticStatus::ERROR;
   }
 
   // Create message
   std::string msg;
-  if (level == diagnostic_msgs::msg::DiagnosticStatus::OK) {
+  if (level == diagnostic_msgs::DiagnosticStatus::OK) {
     msg = "OK";
-  } else if (level == diagnostic_msgs::msg::DiagnosticStatus::WARN) {
+  } else if (level == diagnostic_msgs::DiagnosticStatus::WARN) {
     msg = "Warn";
-  } else if (level == diagnostic_msgs::msg::DiagnosticStatus::ERROR) {
+  } else if (level == diagnostic_msgs::DiagnosticStatus::ERROR) {
     msg = "Error";
   }
 
   stat.summary(level, msg);
 }
 
-void AutowareStateMonitorNode::checkTFStatus(
+void AutowareStateMonitorNode::checkTfStatus(
   diagnostic_updater::DiagnosticStatusWrapper & stat, const std::string & module_name)
 {
-  int8_t level = diagnostic_msgs::msg::DiagnosticStatus::OK;
+  int8_t level = diagnostic_msgs::DiagnosticStatus::OK;
 
+  const auto & topic_stats = state_input_.topic_stats;
   const auto & tf_stats = state_input_.tf_stats;
 
   // OK
@@ -146,7 +142,7 @@ void AutowareStateMonitorNode::checkTFStatus(
     const auto name = fmt::format("{}2{}", tf_config.from, tf_config.to);
     stat.add(fmt::format("{} status", name), "Not Received");
 
-    level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
+    level = diagnostic_msgs::DiagnosticStatus::ERROR;
   }
 
   // Check tf timeout
@@ -161,19 +157,19 @@ void AutowareStateMonitorNode::checkTFStatus(
     const auto name = fmt::format("{}2{}", tf_config.from, tf_config.to);
     stat.add(fmt::format("{} status", name), "Timeout");
     stat.addf(fmt::format("{} timeout", name), "%.2f [s]", tf_config.timeout);
-    stat.addf(fmt::format("{} checked_time", name), "%.2f [s]", tf_stats.checked_time.seconds());
-    stat.addf(fmt::format("{} last_received_time", name), "%.2f [s]", last_received_time.seconds());
+    stat.addf(fmt::format("{} checked_time", name), "%.2f [s]", tf_stats.checked_time.toSec());
+    stat.addf(fmt::format("{} last_received_time", name), "%.2f [s]", last_received_time.toSec());
 
-    level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
+    level = diagnostic_msgs::DiagnosticStatus::ERROR;
   }
 
   // Create message
   std::string msg;
-  if (level == diagnostic_msgs::msg::DiagnosticStatus::OK) {
+  if (level == diagnostic_msgs::DiagnosticStatus::OK) {
     msg = "OK";
-  } else if (level == diagnostic_msgs::msg::DiagnosticStatus::WARN) {
+  } else if (level == diagnostic_msgs::DiagnosticStatus::WARN) {
     msg = "Warn";
-  } else if (level == diagnostic_msgs::msg::DiagnosticStatus::ERROR) {
+  } else if (level == diagnostic_msgs::DiagnosticStatus::ERROR) {
     msg = "Error";
   }
 

@@ -1,21 +1,20 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2020 Autoware Foundation. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
-#include "system_monitor/hdd_monitor/hdd_monitor.hpp"
-
-#include <hdd_reader/hdd_reader.hpp>
-#include <rclcpp/rclcpp.hpp>
+#include <string>
 
 #include <boost/algorithm/string.hpp>
 #include <boost/archive/text_oarchive.hpp>
@@ -24,12 +23,13 @@
 
 #include <fmt/format.h>
 #include <gtest/gtest.h>
+#include <ros/ros.h>
 
-#include <memory>
-#include <string>
+#include <hdd_reader/hdd_reader.h>
+#include <system_monitor/hdd_monitor/hdd_monitor.h>
 
 namespace fs = boost::filesystem;
-using DiagStatus = diagnostic_msgs::msg::DiagnosticStatus;
+using DiagStatus = diagnostic_msgs::DiagnosticStatus;
 
 char ** argv_;
 
@@ -38,12 +38,9 @@ class TestHDDMonitor : public HDDMonitor
   friend class HDDMonitorTestSuite;
 
 public:
-  TestHDDMonitor(const std::string & node_name, const rclcpp::NodeOptions & options)
-  : HDDMonitor(node_name, options)
-  {
-  }
+  TestHDDMonitor(const ros::NodeHandle & nh, const ros::NodeHandle & pnh) : HDDMonitor(nh, pnh) {}
 
-  void diagCallback(const diagnostic_msgs::msg::DiagnosticArray::ConstSharedPtr diag_msg)
+  void diagCallback(const diagnostic_msgs::DiagnosticArray::ConstPtr & diag_msg)
   {
     array_ = *diag_msg;
   }
@@ -80,9 +77,9 @@ public:
     }
   }
 
-  void clearHDDParams() { hdd_params_.clear(); }
+  void clearHDDParams(void) { hdd_params_.clear(); }
 
-  void update() { updater_.force_update(); }
+  void update(void) { updater_.force_update(); }
 
   const std::string removePrefix(const std::string & name)
   {
@@ -101,14 +98,14 @@ public:
   }
 
 private:
-  diagnostic_msgs::msg::DiagnosticArray array_;
-  const std::string prefix_ = std::string(this->get_name()) + ": ";
+  diagnostic_msgs::DiagnosticArray array_;
+  const std::string prefix_ = ros::this_node::getName().substr(1) + ": ";
 };
 
 class HDDMonitorTestSuite : public ::testing::Test
 {
 public:
-  HDDMonitorTestSuite()
+  HDDMonitorTestSuite() : nh_(""), pnh_("~")
   {
     // Get directory of executable
     const fs::path exe_path(argv_[0]);
@@ -118,32 +115,25 @@ public:
   }
 
 protected:
+  ros::NodeHandle nh_, pnh_;
   std::unique_ptr<TestHDDMonitor> monitor_;
-  rclcpp::Subscription<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr sub_;
+  ros::Subscriber sub_;
   std::string exe_dir_;
   std::string df_;
 
-  void SetUp()
+  void SetUp(void)
   {
-    using std::placeholders::_1;
-    rclcpp::init(0, nullptr);
-    rclcpp::NodeOptions node_options;
-    monitor_ = std::make_unique<TestHDDMonitor>("test_hdd_monitor", node_options);
-    sub_ = monitor_->create_subscription<diagnostic_msgs::msg::DiagnosticArray>(
-      "/diagnostics", 1000, std::bind(&TestHDDMonitor::diagCallback, monitor_.get(), _1));
+    monitor_ = std::make_unique<TestHDDMonitor>(nh_, pnh_);
+    sub_ = nh_.subscribe("/diagnostics", 1000, &TestHDDMonitor::diagCallback, monitor_.get());
+
     // Remove dummy executable if exists
-    if (fs::exists(df_)) {
-      fs::remove(df_);
-    }
+    if (fs::exists(df_)) fs::remove(df_);
   }
 
-  void TearDown()
+  void TearDown(void)
   {
     // Remove dummy executable if exists
-    if (fs::exists(df_)) {
-      fs::remove(df_);
-    }
-    rclcpp::shutdown();
+    if (fs::exists(df_)) fs::remove(df_);
   }
 
   bool findValue(const DiagStatus status, const std::string & key, std::string & value)  // NOLINT
@@ -157,7 +147,7 @@ protected:
     return false;
   }
 
-  void modifyPath()
+  void modifyPath(void)
   {
     // Modify PATH temporarily
     auto env = boost::this_process::environment();
@@ -186,9 +176,7 @@ void * hdd_reader(void * args)
 
   // Create a new socket
   int sock = socket(AF_INET, SOCK_STREAM, 0);
-  if (sock < 0) {
-    return nullptr;
-  }
+  if (sock < 0) return nullptr;
 
   // Allow address reuse
   int ret = 0;
@@ -284,9 +272,7 @@ void * hdd_reader(void * args)
       // Wait for recv timeout
       while (true) {
         pthread_mutex_lock(&mutex);
-        if (stop_thread) {
-          break;
-        }
+        if (stop_thread) break;
         pthread_mutex_unlock(&mutex);
         sleep(1);
       }
@@ -319,7 +305,7 @@ TEST_F(HDDMonitorTestSuite, tempNormalTest)
   ThreadTestMode mode = Normal;
   pthread_create(&th, nullptr, hdd_reader, &mode);
   // Wait for thread started
-  rclcpp::WallRate(10).sleep();
+  ros::WallDuration(0.1).sleep();
 
   // Publish topic
   monitor_->update();
@@ -327,8 +313,8 @@ TEST_F(HDDMonitorTestSuite, tempNormalTest)
   pthread_join(th, NULL);
 
   // Give time to publish
-  rclcpp::WallRate(2).sleep();
-  rclcpp::spin_some(monitor_->get_node_base_interface());
+  ros::WallDuration(0.5).sleep();
+  ros::spinOnce();
 
   // Verify
   DiagStatus status;
@@ -343,7 +329,7 @@ TEST_F(HDDMonitorTestSuite, tempWarnTest)
   ThreadTestMode mode = Hot;
   pthread_create(&th, nullptr, hdd_reader, &mode);
   // Wait for thread started
-  rclcpp::WallRate(10).sleep();
+  ros::WallDuration(0.1).sleep();
 
   // Publish topic
   monitor_->update();
@@ -351,8 +337,8 @@ TEST_F(HDDMonitorTestSuite, tempWarnTest)
   pthread_join(th, NULL);
 
   // Give time to publish
-  rclcpp::WallRate(2).sleep();
-  rclcpp::spin_some(monitor_->get_node_base_interface());
+  ros::WallDuration(0.5).sleep();
+  ros::spinOnce();
 
   // Verify
   DiagStatus status;
@@ -367,7 +353,7 @@ TEST_F(HDDMonitorTestSuite, tempErrorTest)
   ThreadTestMode mode = CriticalHot;
   pthread_create(&th, nullptr, hdd_reader, &mode);
   // Wait for thread started
-  rclcpp::WallRate(10).sleep();
+  ros::WallDuration(0.1).sleep();
 
   // Publish topic
   monitor_->update();
@@ -375,8 +361,8 @@ TEST_F(HDDMonitorTestSuite, tempErrorTest)
   pthread_join(th, NULL);
 
   // Give time to publish
-  rclcpp::WallRate(2).sleep();
-  rclcpp::spin_some(monitor_->get_node_base_interface());
+  ros::WallDuration(0.5).sleep();
+  ros::spinOnce();
 
   // Verify
   DiagStatus status;
@@ -391,7 +377,7 @@ TEST_F(HDDMonitorTestSuite, tempReturnsErrorTest)
   ThreadTestMode mode = ReturnsError;
   pthread_create(&th, nullptr, hdd_reader, &mode);
   // Wait for thread started
-  rclcpp::WallRate(10).sleep();
+  ros::WallDuration(0.1).sleep();
 
   // Publish topic
   monitor_->update();
@@ -399,8 +385,8 @@ TEST_F(HDDMonitorTestSuite, tempReturnsErrorTest)
   pthread_join(th, NULL);
 
   // Give time to publish
-  rclcpp::WallRate(2).sleep();
-  rclcpp::spin_some(monitor_->get_node_base_interface());
+  ros::WallDuration(0.5).sleep();
+  ros::spinOnce();
 
   // Verify
   DiagStatus status;
@@ -418,7 +404,7 @@ TEST_F(HDDMonitorTestSuite, tempRecvTimeoutTest)
   ThreadTestMode mode = RecvTimeout;
   pthread_create(&th, nullptr, hdd_reader, &mode);
   // Wait for thread started
-  rclcpp::WallRate(10).sleep();
+  ros::WallDuration(0.1).sleep();
 
   // Publish topic
   monitor_->update();
@@ -430,8 +416,8 @@ TEST_F(HDDMonitorTestSuite, tempRecvTimeoutTest)
   pthread_join(th, NULL);
 
   // Give time to publish
-  rclcpp::WallRate(2).sleep();
-  rclcpp::spin_some(monitor_->get_node_base_interface());
+  ros::WallDuration(0.5).sleep();
+  ros::spinOnce();
 
   // Verify
   DiagStatus status;
@@ -449,7 +435,7 @@ TEST_F(HDDMonitorTestSuite, tempRecvNoDataTest)
   ThreadTestMode mode = RecvNoData;
   pthread_create(&th, nullptr, hdd_reader, &mode);
   // Wait for thread started
-  rclcpp::WallRate(10).sleep();
+  ros::WallDuration(0.1).sleep();
 
   // Publish topic
   monitor_->update();
@@ -457,8 +443,8 @@ TEST_F(HDDMonitorTestSuite, tempRecvNoDataTest)
   pthread_join(th, NULL);
 
   // Give time to publish
-  rclcpp::WallRate(2).sleep();
-  rclcpp::spin_some(monitor_->get_node_base_interface());
+  ros::WallDuration(0.5).sleep();
+  ros::spinOnce();
 
   // Verify
   DiagStatus status;
@@ -476,7 +462,7 @@ TEST_F(HDDMonitorTestSuite, tempFormatErrorTest)
   ThreadTestMode mode = FormatError;
   pthread_create(&th, nullptr, hdd_reader, &mode);
   // Wait for thread started
-  rclcpp::WallRate(10).sleep();
+  ros::WallDuration(0.1).sleep();
 
   // Publish topic
   monitor_->update();
@@ -484,8 +470,8 @@ TEST_F(HDDMonitorTestSuite, tempFormatErrorTest)
   pthread_join(th, NULL);
 
   // Give time to publish
-  rclcpp::WallRate(2).sleep();
-  rclcpp::spin_some(monitor_->get_node_base_interface());
+  ros::WallDuration(0.5).sleep();
+  ros::spinOnce();
 
   // Verify
   DiagStatus status;
@@ -503,8 +489,8 @@ TEST_F(HDDMonitorTestSuite, tempConnectErrorTest)
   monitor_->update();
 
   // Give time to publish
-  rclcpp::WallRate(2).sleep();
-  rclcpp::spin_some(monitor_->get_node_base_interface());
+  ros::WallDuration(0.5).sleep();
+  ros::spinOnce();
 
   // Verify
   DiagStatus status;
@@ -525,8 +511,8 @@ TEST_F(HDDMonitorTestSuite, tempInvalidDiskParameterTest)
   monitor_->update();
 
   // Give time to publish
-  rclcpp::WallRate(2).sleep();
-  rclcpp::spin_some(monitor_->get_node_base_interface());
+  ros::WallDuration(0.5).sleep();
+  ros::spinOnce();
 
   // Verify
   DiagStatus status;
@@ -544,7 +530,7 @@ TEST_F(HDDMonitorTestSuite, tempNoSuchDeviceTest)
   ThreadTestMode mode = Normal;
   pthread_create(&th, nullptr, hdd_reader, &mode);
   // Wait for thread started
-  rclcpp::WallRate(10).sleep();
+  ros::WallDuration(0.1).sleep();
 
   // Publish topic
   monitor_->update();
@@ -552,8 +538,8 @@ TEST_F(HDDMonitorTestSuite, tempNoSuchDeviceTest)
   pthread_join(th, NULL);
 
   // Give time to publish
-  rclcpp::WallRate(2).sleep();
-  rclcpp::spin_some(monitor_->get_node_base_interface());
+  ros::WallDuration(0.5).sleep();
+  ros::spinOnce();
 
   // Verify
   DiagStatus status;
@@ -576,8 +562,8 @@ TEST_F(HDDMonitorTestSuite, usageWarnTest)
     monitor_->update();
 
     // Give time to publish
-    rclcpp::WallRate(2).sleep();
-    rclcpp::spin_some(monitor_->get_node_base_interface());
+    ros::WallDuration(0.5).sleep();
+    ros::spinOnce();
 
     // Verify
     DiagStatus status;
@@ -595,8 +581,8 @@ TEST_F(HDDMonitorTestSuite, usageWarnTest)
     monitor_->update();
 
     // Give time to publish
-    rclcpp::WallRate(2).sleep();
-    rclcpp::spin_some(monitor_->get_node_base_interface());
+    ros::WallDuration(0.5).sleep();
+    ros::spinOnce();
 
     // Verify
     DiagStatus status;
@@ -613,8 +599,8 @@ TEST_F(HDDMonitorTestSuite, usageWarnTest)
     monitor_->update();
 
     // Give time to publish
-    rclcpp::WallRate(2).sleep();
-    rclcpp::spin_some(monitor_->get_node_base_interface());
+    ros::WallDuration(0.5).sleep();
+    ros::spinOnce();
 
     // Verify
     DiagStatus status;
@@ -631,8 +617,8 @@ TEST_F(HDDMonitorTestSuite, usageErrorTest)
     monitor_->update();
 
     // Give time to publish
-    rclcpp::WallRate(2).sleep();
-    rclcpp::spin_some(monitor_->get_node_base_interface());
+    ros::WallDuration(0.5).sleep();
+    ros::spinOnce();
 
     // Verify
     DiagStatus status;
@@ -650,8 +636,8 @@ TEST_F(HDDMonitorTestSuite, usageErrorTest)
     monitor_->update();
 
     // Give time to publish
-    rclcpp::WallRate(2).sleep();
-    rclcpp::spin_some(monitor_->get_node_base_interface());
+    ros::WallDuration(0.5).sleep();
+    ros::spinOnce();
 
     // Verify
     DiagStatus status;
@@ -668,8 +654,8 @@ TEST_F(HDDMonitorTestSuite, usageErrorTest)
     monitor_->update();
 
     // Give time to publish
-    rclcpp::WallRate(2).sleep();
-    rclcpp::spin_some(monitor_->get_node_base_interface());
+    ros::WallDuration(0.5).sleep();
+    ros::spinOnce();
 
     // Verify
     DiagStatus status;
@@ -690,8 +676,8 @@ TEST_F(HDDMonitorTestSuite, usageDfErrorTest)
   monitor_->update();
 
   // Give time to publish
-  rclcpp::WallRate(2).sleep();
-  rclcpp::spin_some(monitor_->get_node_base_interface());
+  ros::WallDuration(0.5).sleep();
+  ros::spinOnce();
 
   // Verify
   DiagStatus status;
@@ -707,6 +693,7 @@ int main(int argc, char ** argv)
 {
   argv_ = argv;
   testing::InitGoogleTest(&argc, argv);
+  ros::init(argc, argv, "HDDMonitorTestNode");
 
   return RUN_ALL_TESTS();
 }

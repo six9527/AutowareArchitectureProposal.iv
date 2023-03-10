@@ -1,56 +1,50 @@
-// Copyright 2020 Autoware Foundation
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-#include "system_monitor/net_monitor/net_monitor.hpp"
-
-#include <rclcpp/rclcpp.hpp>
-
-#include <boost/algorithm/string.hpp>
-#include <boost/filesystem.hpp>
+/*
+ * Copyright 2020 Autoware Foundation. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #include <gtest/gtest.h>
-
-#include <memory>
+#include <ros/ros.h>
+#include <system_monitor/net_monitor/net_monitor.h>
+#include <boost/algorithm/string.hpp>
+#include <boost/filesystem.hpp>
 #include <string>
 #include <vector>
 
 static constexpr const char * DOCKER_ENV = "/.dockerenv";
 
 namespace fs = boost::filesystem;
-using DiagStatus = diagnostic_msgs::msg::DiagnosticStatus;
+using DiagStatus = diagnostic_msgs::DiagnosticStatus;
 
 class TestNetMonitor : public NetMonitor
 {
   friend class NetMonitorTestSuite;
 
 public:
-  TestNetMonitor(const std::string & node_name, const rclcpp::NodeOptions & options)
-  : NetMonitor(node_name, options)
-  {
-  }
+  TestNetMonitor(const ros::NodeHandle & nh, const ros::NodeHandle & pnh) : NetMonitor(nh, pnh) {}
 
-  void diagCallback(const diagnostic_msgs::msg::DiagnosticArray::ConstSharedPtr diag_msg)
+  void diagCallback(const diagnostic_msgs::DiagnosticArray::ConstPtr & diag_msg)
   {
     array_ = *diag_msg;
   }
 
   void changeUsageWarn(float usage_warn) { usage_warn_ = usage_warn; }
 
-  const std::vector<std::string> getDeviceParams() { return device_params_; }
-  void clearDeviceParams() { device_params_.clear(); }
+  const std::vector<std::string> getDeviceParams(void) { return device_params_; }
+  void clearDeviceParams(void) { device_params_.clear(); }
 
-  void update() { updater_.force_update(); }
+  void update(void) { updater_.force_update(); }
 
   const std::string removePrefix(const std::string & name)
   {
@@ -69,30 +63,27 @@ public:
   }
 
 private:
-  diagnostic_msgs::msg::DiagnosticArray array_;
-  const std::string prefix_ = std::string(this->get_name()) + ": ";
+  diagnostic_msgs::DiagnosticArray array_;
+  const std::string prefix_ = ros::this_node::getName().substr(1) + ": ";
 };
 
 class NetMonitorTestSuite : public ::testing::Test
 {
 public:
-  NetMonitorTestSuite() {}
+  NetMonitorTestSuite() : nh_(""), pnh_("~") {}
 
 protected:
+  ros::NodeHandle nh_, pnh_;
   std::unique_ptr<TestNetMonitor> monitor_;
-  rclcpp::Subscription<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr sub_;
+  ros::Subscriber sub_;
 
-  void SetUp()
+  void SetUp(void)
   {
-    using std::placeholders::_1;
-    rclcpp::init(0, nullptr);
-    rclcpp::NodeOptions node_options;
-    monitor_ = std::make_unique<TestNetMonitor>("test_net_monitor", node_options);
-    sub_ = monitor_->create_subscription<diagnostic_msgs::msg::DiagnosticArray>(
-      "/diagnostics", 1000, std::bind(&TestNetMonitor::diagCallback, monitor_.get(), _1));
+    monitor_ = std::make_unique<TestNetMonitor>(nh_, pnh_);
+    sub_ = nh_.subscribe("/diagnostics", 1000, &TestNetMonitor::diagCallback, monitor_.get());
   }
 
-  void TearDown() { rclcpp::shutdown(); }
+  void TearDown(void) {}
 
   bool findValue(const DiagStatus status, const std::string & key, std::string & value)  // NOLINT
   {
@@ -114,8 +105,8 @@ TEST_F(NetMonitorTestSuite, usageWarnTest)
     monitor_->update();
 
     // Give time to publish
-    rclcpp::WallRate(2).sleep();
-    rclcpp::spin_some(monitor_->get_node_base_interface());
+    ros::WallDuration(0.5).sleep();
+    ros::spinOnce();
 
     // Verify
     DiagStatus status;
@@ -133,17 +124,15 @@ TEST_F(NetMonitorTestSuite, usageWarnTest)
     monitor_->update();
 
     // Give time to publish
-    rclcpp::WallRate(2).sleep();
-    rclcpp::spin_some(monitor_->get_node_base_interface());
+    ros::WallDuration(0.5).sleep();
+    ros::spinOnce();
 
     // Verify
     DiagStatus status;
     ASSERT_TRUE(monitor_->findDiagStatus("Network Usage", status));
     // Skip test if process runs inside docker
     // Don't know what interface should be monitored.
-    if (!fs::exists(DOCKER_ENV)) {
-      ASSERT_EQ(status.level, DiagStatus::WARN);
-    }
+    if (!fs::exists(DOCKER_ENV)) ASSERT_EQ(status.level, DiagStatus::WARN);
   }
 
   // Verify normal behavior
@@ -155,8 +144,8 @@ TEST_F(NetMonitorTestSuite, usageWarnTest)
     monitor_->update();
 
     // Give time to publish
-    rclcpp::WallRate(2).sleep();
-    rclcpp::spin_some(monitor_->get_node_base_interface());
+    ros::WallDuration(0.5).sleep();
+    ros::spinOnce();
 
     // Verify
     DiagStatus status;
@@ -174,8 +163,8 @@ TEST_F(NetMonitorTestSuite, usageInvalidDeviceParameterTest)
   monitor_->update();
 
   // Give time to publish
-  rclcpp::WallRate(2).sleep();
-  rclcpp::spin_some(monitor_->get_node_base_interface());
+  ros::WallDuration(0.5).sleep();
+  ros::spinOnce();
 
   // Verify
   DiagStatus status;
@@ -187,6 +176,7 @@ TEST_F(NetMonitorTestSuite, usageInvalidDeviceParameterTest)
 int main(int argc, char ** argv)
 {
   testing::InitGoogleTest(&argc, argv);
+  ros::init(argc, argv, "NetMonitorTestNode");
 
   return RUN_ALL_TESTS();
 }

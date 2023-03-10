@@ -1,0 +1,56 @@
+<launch>
+  <arg name="input_autoware_state" default="/autoware/state" />
+  <arg name="input_driving_capability" default="/autoware/driving_capability" />
+  <!-- To be replaced by ControlCommand -->
+  <arg name="input_prev_control_command" default="/control/vehicle_cmd" />
+  <arg name="input_current_gate_mode" default="/control/current_gate_mode" />
+  <arg name="input_twist" default="/localization/twist" />
+  <arg name="input_is_state_timeout" default="state_timeout_checker/is_state_timeout" />
+
+  <arg name="output_control_command" default="/system/emergency/control_cmd" />
+  <arg name="output_shift" default="/system/emergency/shift_cmd" />
+  <arg name="output_turn_signal" default="/system/emergency/turn_signal_cmd" />
+  <arg name="output_is_emergency" default="/system/emergency/is_emergency" />
+  <arg name="output_hazard_status" default="/system/emergency/hazard_status" />
+  <arg name="output_diagnostics_err" default="/diagnostics_err" />
+
+  <arg name="service_clear_emergency" default="/system/clear_emergency" />
+
+  <arg name="config_file" default="$(find emergency_handler)/config/emergency_handler.yaml" />
+  <arg name="emergency_hazard_level" default="2" doc="1: Safe Fault, 2: Latent Fault, 3: Single Point Fault" />
+  <arg name="use_emergency_hold" default="false" />
+
+  <!-- emergency_handler -->
+  <node pkg="emergency_handler" type="emergency_handler" name="emergency_handler" output="screen">
+    <remap from="~input/autoware_state" to="$(arg input_autoware_state)"/>
+    <remap from="~input/driving_capability" to="$(arg input_driving_capability)"/>
+    <remap from="~input/prev_control_command" to="$(arg input_prev_control_command)"/>
+    <remap from="~input/current_gate_mode" to="$(arg input_current_gate_mode)"/>
+    <remap from="~input/twist" to="$(arg input_twist)"/>
+    <remap from="~input/is_state_timeout" to="$(arg input_is_state_timeout)"/>
+
+    <remap from="~output/control_command" to="$(arg output_control_command)"/>
+    <remap from="~output/shift" to="$(arg output_shift)"/>
+    <remap from="~output/turn_signal" to="$(arg output_turn_signal)"/>
+    <remap from="~output/is_emergency" to="$(arg output_is_emergency)"/>
+    <remap from="~output/hazard_status" to="$(arg output_hazard_status)"/>
+    <remap from="~output/diagnostics_err" to="$(arg output_diagnostics_err)"/>
+
+    <remap from="~service/clear_emergency" to="$(arg service_clear_emergency)"/>
+
+    <rosparam command="load" file="$(arg config_file)" />
+    <param name="emergency_hazard_level" value="$(arg emergency_hazard_level)" />
+    <param name="use_emergency_hold" value="$(arg use_emergency_hold)" />
+  </node>
+
+  <!-- state_timeout_checker -->
+  <arg name="state_timeout_checker_config_file" default="$(find emergency_handler)/config/state_timeout_checker.yaml" />
+
+  <node pkg="emergency_handler" type="state_timeout_checker" name="state_timeout_checker" output="screen">
+    <remap from="~input/autoware_state" to="$(arg input_autoware_state)"/>
+
+    <remap from="~output/is_state_timeout" to="~is_state_timeout"/>
+
+    <rosparam command="load" file="$(arg state_timeout_checker_config_file)" />
+  </node>
+</launch>

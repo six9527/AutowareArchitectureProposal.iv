@@ -1,60 +1,48 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2020 Tier IV, Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
-#include <deque>
-#include <vector>
-
-#define FMT_HEADER_ONLY
-#include "autoware_state_monitor/state_machine.hpp"
+#include <autoware_state_monitor/state_machine.h>
 
 #include <fmt/format.h>
 
 namespace
 {
-double calcDistance2d(const geometry_msgs::msg::Point & p1, const geometry_msgs::msg::Point & p2)
+double calcDistance2d(const geometry_msgs::Point & p1, const geometry_msgs::Point & p2)
 {
   return std::hypot(p1.x - p2.x, p1.y - p2.y);
 }
 
-double calcDistance2d(const geometry_msgs::msg::Pose & p1, const geometry_msgs::msg::Pose & p2)
+double calcDistance2d(const geometry_msgs::Pose & p1, const geometry_msgs::Pose & p2)
 {
   return calcDistance2d(p1.position, p2.position);
 }
 
-bool isValidAngle(
-  const geometry_msgs::msg::Pose & current_pose, const geometry_msgs::msg::Pose & ref_pose,
-  const double th_angle_rad)
-{
-  const double yaw_curr = tf2::getYaw(current_pose.orientation);
-  const double yaw_ref = tf2::getYaw(ref_pose.orientation);
-  const double yaw_diff = autoware_utils::normalizeRadian(yaw_curr - yaw_ref);
-  return std::fabs(yaw_diff) < th_angle_rad;
-}
-
 bool isNearGoal(
-  const geometry_msgs::msg::Pose & current_pose, const geometry_msgs::msg::Pose & goal_pose,
+  const geometry_msgs::Pose & current_pose, const geometry_msgs::Pose & goal_pose,
   const double th_dist)
 {
   return calcDistance2d(current_pose, goal_pose) < th_dist;
 }
 
 bool isStopped(
-  const std::deque<nav_msgs::msg::Odometry::ConstSharedPtr> & odometry_buffer,
+  const std::deque<geometry_msgs::TwistStamped::ConstPtr> & twist_buffer,
   const double th_stopped_velocity_mps)
 {
-  for (const auto & odometry : odometry_buffer) {
-    if (std::abs(odometry->twist.twist.linear.x) > th_stopped_velocity_mps) {
+  for (const auto & twist : twist_buffer) {
+    if (std::abs(twist->twist.linear.x) > th_stopped_velocity_mps) {
       return false;
     }
   }
@@ -164,17 +152,15 @@ bool StateMachine::isEngaged() const
     return false;
   }
 
-  if (state_input_.autoware_engage->engage != 1) {
+  if (state_input_.autoware_engage->data != 1) {
     return false;
   }
 
-  if (!state_input_.control_mode_) {
+  if (!state_input_.vehicle_control_mode) {
     return false;
   }
 
-  if (
-    state_input_.control_mode_->mode ==
-    autoware_auto_vehicle_msgs::msg::ControlModeReport::MANUAL) {
+  if (state_input_.vehicle_control_mode->data == autoware_vehicle_msgs::ControlMode::MANUAL) {
     return false;
   }
 
@@ -183,16 +169,23 @@ bool StateMachine::isEngaged() const
 
 bool StateMachine::isOverridden() const { return !isEngaged(); }
 
+bool StateMachine::isEmergency() const
+{
+  if (!state_input_.is_emergency) {
+    return false;
+  }
+
+  return state_input_.is_emergency->data;
+}
+
 bool StateMachine::hasArrivedGoal() const
 {
-  const auto is_valid_goal_angle = isValidAngle(
-    state_input_.current_pose->pose, *state_input_.goal_pose, state_param_.th_arrived_angle);
   const auto is_near_goal = isNearGoal(
     state_input_.current_pose->pose, *state_input_.goal_pose, state_param_.th_arrived_distance_m);
   const auto is_stopped =
-    isStopped(state_input_.odometry_buffer, state_param_.th_stopped_velocity_mps);
+    isStopped(state_input_.twist_buffer, state_param_.th_stopped_velocity_mps);
 
-  if (is_valid_goal_angle && is_near_goal && is_stopped) {
+  if (is_near_goal && is_stopped) {
     return true;
   }
 
@@ -217,20 +210,24 @@ AutowareState StateMachine::judgeAutowareState() const
     return AutowareState::Finalizing;
   }
 
+  if (autoware_state_ != AutowareState::Emergency && isEmergency()) {
+    state_before_emergency_ = autoware_state_;
+    return AutowareState::Emergency;
+  }
+
   switch (autoware_state_) {
     case (AutowareState::InitializingVehicle): {
       if (isVehicleInitialized()) {
         if (!flags_.waiting_after_initializing) {
           flags_.waiting_after_initializing = true;
-          times_.initializing_completed = state_input_.current_time;
+          times_.initializing_completed = ros::Time::now();
           break;
         }
 
         // Wait after initialize completed to avoid sync error
         constexpr double wait_time_after_initializing = 1.0;
-        const auto time_from_initializing =
-          state_input_.current_time - times_.initializing_completed;
-        if (time_from_initializing.seconds() > wait_time_after_initializing) {
+        const auto time_from_initializing = ros::Time::now() - times_.initializing_completed;
+        if (time_from_initializing.toSec() > wait_time_after_initializing) {
           flags_.waiting_after_initializing = false;
           return AutowareState::WaitingForRoute;
         }
@@ -257,14 +254,14 @@ AutowareState StateMachine::judgeAutowareState() const
       if (isPlanningCompleted()) {
         if (!flags_.waiting_after_planning) {
           flags_.waiting_after_planning = true;
-          times_.planning_completed = state_input_.current_time;
+          times_.planning_completed = ros::Time::now();
           break;
         }
 
         // Wait after planning completed to avoid sync error
-        constexpr double wait_time_after_planning = 3.0;
-        const auto time_from_planning = state_input_.current_time - times_.planning_completed;
-        if (time_from_planning.seconds() > wait_time_after_planning) {
+        constexpr double wait_time_after_planning = 1.0;
+        const auto time_from_planning = ros::Time::now() - times_.planning_completed;
+        if (time_from_planning.toSec() > wait_time_after_planning) {
           flags_.waiting_after_planning = false;
           return AutowareState::WaitingForEngage;
         }
@@ -287,7 +284,7 @@ AutowareState StateMachine::judgeAutowareState() const
       }
 
       if (hasArrivedGoal()) {
-        times_.arrived_goal = state_input_.current_time;
+        times_.arrived_goal = ros::Time::now();
         return AutowareState::ArrivedGoal;
       }
 
@@ -304,7 +301,7 @@ AutowareState StateMachine::judgeAutowareState() const
       }
 
       if (hasArrivedGoal()) {
-        times_.arrived_goal = state_input_.current_time;
+        times_.arrived_goal = ros::Time::now();
         return AutowareState::ArrivedGoal;
       }
 
@@ -313,9 +310,17 @@ AutowareState StateMachine::judgeAutowareState() const
 
     case (AutowareState::ArrivedGoal): {
       constexpr double wait_time_after_arrived_goal = 2.0;
-      const auto time_from_arrived_goal = state_input_.current_time - times_.arrived_goal;
-      if (time_from_arrived_goal.seconds() > wait_time_after_arrived_goal) {
+      const auto time_from_arrived_goal = ros::Time::now() - times_.arrived_goal;
+      if (time_from_arrived_goal.toSec() > wait_time_after_arrived_goal) {
         return AutowareState::WaitingForRoute;
+      }
+
+      break;
+    }
+
+    case (AutowareState::Emergency): {
+      if (!isEmergency()) {
+        return state_before_emergency_;
       }
 
       break;

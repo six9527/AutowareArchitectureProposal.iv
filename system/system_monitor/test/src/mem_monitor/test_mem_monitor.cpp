@@ -1,20 +1,20 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2020 Autoware Foundation. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
-#include "system_monitor/mem_monitor/mem_monitor.hpp"
-
-#include <rclcpp/rclcpp.hpp>
+#include <string>
 
 #include <boost/algorithm/string.hpp>
 #include <boost/filesystem.hpp>
@@ -23,12 +23,12 @@
 
 #include <fmt/format.h>
 #include <gtest/gtest.h>
+#include <ros/ros.h>
 
-#include <memory>
-#include <string>
+#include <system_monitor/mem_monitor/mem_monitor.h>
 
 namespace fs = boost::filesystem;
-using DiagStatus = diagnostic_msgs::msg::DiagnosticStatus;
+using DiagStatus = diagnostic_msgs::DiagnosticStatus;
 
 char ** argv_;
 
@@ -37,12 +37,9 @@ class TestMemMonitor : public MemMonitor
   friend class MemMonitorTestSuite;
 
 public:
-  TestMemMonitor(const std::string & node_name, const rclcpp::NodeOptions & options)
-  : MemMonitor(node_name, options)
-  {
-  }
+  TestMemMonitor(const ros::NodeHandle & nh, const ros::NodeHandle & pnh) : MemMonitor(nh, pnh) {}
 
-  void diagCallback(const diagnostic_msgs::msg::DiagnosticArray::ConstSharedPtr diag_msg)
+  void diagCallback(const diagnostic_msgs::DiagnosticArray::ConstPtr & diag_msg)
   {
     array_ = *diag_msg;
   }
@@ -50,7 +47,7 @@ public:
   void changeUsageWarn(float usage_warn) { usage_warn_ = usage_warn; }
   void changeUsageError(float usage_error) { usage_error_ = usage_error; }
 
-  void update() { updater_.force_update(); }
+  void update(void) { updater_.force_update(); }
 
   const std::string removePrefix(const std::string & name)
   {
@@ -69,14 +66,14 @@ public:
   }
 
 private:
-  diagnostic_msgs::msg::DiagnosticArray array_;
-  const std::string prefix_ = std::string(this->get_name()) + ": ";
+  diagnostic_msgs::DiagnosticArray array_;
+  const std::string prefix_ = ros::this_node::getName().substr(1) + ": ";
 };
 
 class MemMonitorTestSuite : public ::testing::Test
 {
 public:
-  MemMonitorTestSuite()
+  MemMonitorTestSuite() : nh_(""), pnh_("~")
   {
     // Get directory of executable
     const fs::path exe_path(argv_[0]);
@@ -86,33 +83,25 @@ public:
   }
 
 protected:
+  ros::NodeHandle nh_, pnh_;
   std::unique_ptr<TestMemMonitor> monitor_;
-  rclcpp::Subscription<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr sub_;
+  ros::Subscriber sub_;
   std::string exe_dir_;
   std::string free_;
 
-  void SetUp()
+  void SetUp(void)
   {
-    using std::placeholders::_1;
-    rclcpp::init(0, nullptr);
-    rclcpp::NodeOptions node_options;
-    monitor_ = std::make_unique<TestMemMonitor>("test_mem_monitor", node_options);
-    sub_ = monitor_->create_subscription<diagnostic_msgs::msg::DiagnosticArray>(
-      "/diagnostics", 1000, std::bind(&TestMemMonitor::diagCallback, monitor_.get(), _1));
+    monitor_ = std::make_unique<TestMemMonitor>(nh_, pnh_);
+    sub_ = nh_.subscribe("/diagnostics", 1000, &TestMemMonitor::diagCallback, monitor_.get());
 
     // Remove dummy executable if exists
-    if (fs::exists(free_)) {
-      fs::remove(free_);
-    }
+    if (fs::exists(free_)) fs::remove(free_);
   }
 
-  void TearDown()
+  void TearDown(void)
   {
     // Remove dummy executable if exists
-    if (fs::exists(free_)) {
-      fs::remove(free_);
-    }
-    rclcpp::shutdown();
+    if (fs::exists(free_)) fs::remove(free_);
   }
 
   bool findValue(const DiagStatus status, const std::string & key, std::string & value)  // NOLINT
@@ -126,7 +115,7 @@ protected:
     return false;
   }
 
-  void modifyPath()
+  void modifyPath(void)
   {
     // Modify PATH temporarily
     auto env = boost::this_process::environment();
@@ -144,8 +133,8 @@ TEST_F(MemMonitorTestSuite, usageWarnTest)
     monitor_->update();
 
     // Give time to publish
-    rclcpp::WallRate(2).sleep();
-    rclcpp::spin_some(monitor_->get_node_base_interface());
+    ros::WallDuration(0.5).sleep();
+    ros::spinOnce();
 
     // Verify
     DiagStatus status;
@@ -163,8 +152,8 @@ TEST_F(MemMonitorTestSuite, usageWarnTest)
     monitor_->update();
 
     // Give time to publish
-    rclcpp::WallRate(2).sleep();
-    rclcpp::spin_some(monitor_->get_node_base_interface());
+    ros::WallDuration(0.5).sleep();
+    ros::spinOnce();
 
     // Verify
     DiagStatus status;
@@ -181,8 +170,8 @@ TEST_F(MemMonitorTestSuite, usageWarnTest)
     monitor_->update();
 
     // Give time to publish
-    rclcpp::WallRate(2).sleep();
-    rclcpp::spin_some(monitor_->get_node_base_interface());
+    ros::WallDuration(0.5).sleep();
+    ros::spinOnce();
 
     // Verify
     DiagStatus status;
@@ -199,8 +188,8 @@ TEST_F(MemMonitorTestSuite, usageErrorTest)
     monitor_->update();
 
     // Give time to publish
-    rclcpp::WallRate(2).sleep();
-    rclcpp::spin_some(monitor_->get_node_base_interface());
+    ros::WallDuration(0.5).sleep();
+    ros::spinOnce();
 
     // Verify
     DiagStatus status;
@@ -218,8 +207,8 @@ TEST_F(MemMonitorTestSuite, usageErrorTest)
     monitor_->update();
 
     // Give time to publish
-    rclcpp::WallRate(2).sleep();
-    rclcpp::spin_some(monitor_->get_node_base_interface());
+    ros::WallDuration(0.5).sleep();
+    ros::spinOnce();
 
     // Verify
     DiagStatus status;
@@ -236,8 +225,8 @@ TEST_F(MemMonitorTestSuite, usageErrorTest)
     monitor_->update();
 
     // Give time to publish
-    rclcpp::WallRate(2).sleep();
-    rclcpp::spin_some(monitor_->get_node_base_interface());
+    ros::WallDuration(0.5).sleep();
+    ros::spinOnce();
 
     // Verify
     DiagStatus status;
@@ -258,8 +247,8 @@ TEST_F(MemMonitorTestSuite, usageFreeErrorTest)
   monitor_->update();
 
   // Give time to publish
-  rclcpp::WallRate(2).sleep();
-  rclcpp::spin_some(monitor_->get_node_base_interface());
+  ros::WallDuration(0.5).sleep();
+  ros::spinOnce();
 
   // Verify
   DiagStatus status;
@@ -275,6 +264,7 @@ int main(int argc, char ** argv)
 {
   argv_ = argv;
   testing::InitGoogleTest(&argc, argv);
+  ros::init(argc, argv, "MemMonitorTestNode");
 
   return RUN_ALL_TESTS();
 }

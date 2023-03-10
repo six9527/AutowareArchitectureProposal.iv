@@ -1,52 +1,59 @@
-// Copyright 2020 Autoware Foundation
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2020 Autoware Foundation. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 /**
  * @file memory_monitor.cpp
  * @brief Memory monitor class
  */
 
-#include "system_monitor/mem_monitor/mem_monitor.hpp"
-
-#include "system_monitor/system_monitor_utility.hpp"
+#include <string>
+#include <vector>
 
 #include <boost/process.hpp>
 
 #include <fmt/format.h>
 
-#include <string>
-#include <vector>
+#include <system_monitor/mem_monitor/mem_monitor.h>
 
 namespace bp = boost::process;
 
-MemMonitor::MemMonitor(const rclcpp::NodeOptions & options)
-: Node("mem_monitor", options),
-  updater_(this),
-  available_size_(declare_parameter<int>("available_size", 1024) * 1024 * 1024)
+MemMonitor::MemMonitor(const ros::NodeHandle & nh, const ros::NodeHandle & pnh) : nh_(nh), pnh_(pnh)
 {
   gethostname(hostname_, sizeof(hostname_));
+
+  pnh_.param<float>("usage_warn", usage_warn_, 0.95);
+  pnh_.param<float>("usage_error", usage_error_, 0.99);
+
   updater_.setHardwareID(hostname_);
   updater_.add("Memory Usage", this, &MemMonitor::checkUsage);
 }
 
-void MemMonitor::update() { updater_.force_update(); }
+void MemMonitor::run(void)
+{
+  ros::Rate rate(1.0);
+
+  while (ros::ok()) {
+    ros::spinOnce();
+    updater_.force_update();
+    rate.sleep();
+  }
+}
 
 void MemMonitor::checkUsage(diagnostic_updater::DiagnosticStatusWrapper & stat)
 {
-  // Remember start time to measure elapsed time
-  const auto t_start = SystemMonitorUtility::startMeasurement();
-
   // Get total amount of free and used memory
   bp::ipstream is_out;
   bp::ipstream is_err;
@@ -60,14 +67,11 @@ void MemMonitor::checkUsage(diagnostic_updater::DiagnosticStatusWrapper & stat)
     return;
   }
 
+  int level = DiagStatus::OK;
   std::string line;
   int index = 0;
   std::vector<std::string> list;
   float usage;
-  size_t mem_total = 0;
-  size_t mem_shared = 0;
-  size_t mem_available = 0;
-  size_t used_plus = 0;
 
   /*
    Output example of `free -tb`
@@ -89,13 +93,15 @@ void MemMonitor::checkUsage(diagnostic_updater::DiagnosticStatusWrapper & stat)
 
     // Physical memory
     if (index == 1) {
-      mem_total = std::atoll(list[1].c_str());
-      mem_shared = std::atoll(list[4].c_str());
-      mem_available = std::atoll(list[6].c_str());
-
       // available divided by total is available memory including calculation for buff/cache,
-      // so the subtraction of this from 1 gives real usage.
-      usage = 1.0f - static_cast<double>(mem_available) / mem_total;
+      // so the substraction of this from 1 gives real usage.
+      usage = 1.0f - std::atof(list[6].c_str()) / std::atof(list[1].c_str());
+
+      if (usage >= usage_error_)
+        level = DiagStatus::ERROR;
+      else if (usage >= usage_warn_)
+        level = DiagStatus::WARN;
+
       stat.addf(fmt::format("{} usage", list[0]), "%.2f%%", usage * 1e+2);
     }
 
@@ -108,30 +114,11 @@ void MemMonitor::checkUsage(diagnostic_updater::DiagnosticStatusWrapper & stat)
       stat.add(fmt::format("{} shared", list[0]), toHumanReadable(list[4]));
       stat.add(fmt::format("{} buff/cache", list[0]), toHumanReadable(list[5]));
       stat.add(fmt::format("{} available", list[0]), toHumanReadable(list[6]));
-    } else if (index == 3) {
-      // Total:used + Mem:shared
-      used_plus = std::atoll(list[2].c_str()) + mem_shared;
-      double giga = static_cast<double>(used_plus) / (1024 * 1024 * 1024);
-      stat.add(fmt::format("{} used+", list[0]), fmt::format("{:.1f}{}", giga, "G"));
-    } else {
-      /* nothing */
     }
     ++index;
   }
 
-  int level;
-  if (mem_total > used_plus) {
-    level = DiagStatus::OK;
-  } else if (mem_available >= available_size_) {
-    level = DiagStatus::WARN;
-  } else {
-    level = DiagStatus::ERROR;
-  }
-
   stat.summary(level, usage_dict_.at(level));
-
-  // Measure elapsed time since start time and report
-  SystemMonitorUtility::stopMeasurement(t_start, stat);
 }
 
 std::string MemMonitor::toHumanReadable(const std::string & str)
@@ -144,9 +131,6 @@ std::string MemMonitor::toHumanReadable(const std::string & str)
     size /= 1024;
     ++count;
   }
-  const char * format = (count >= 3 || (size > 0 && size < 10)) ? "{:.1f}{}" : "{:.0f}{}";
+  const char * format = (size > 0 && size < 10) ? "{:.1f}{}" : "{:.0f}{}";
   return fmt::format(format, size, units[count]);
 }
-
-#include <rclcpp_components/register_node_macro.hpp>
-RCLCPP_COMPONENTS_REGISTER_NODE(MemMonitor)

@@ -1,39 +1,86 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 2.8.3)
 project(emergency_handler)
 
-### Compile options
-if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 17)
-  set(CMAKE_CXX_STANDARD_REQUIRED ON)
-  set(CMAKE_CXX_EXTENSIONS OFF)
-endif()
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic)
-endif()
+add_compile_options(-std=c++14)
 
-### Dependencies
-find_package(ament_cmake_auto REQUIRED)
-ament_auto_find_build_dependencies()
-
-### Target executable
-set(EMERGENCY_HANDLER_SRC
-  src/emergency_handler/emergency_handler_core.cpp)
-
-set(EMERGENCY_HANDLER_HEADERS
-  include/emergency_handler/emergency_handler_core.hpp)
-
-ament_auto_add_executable(emergency_handler
-  src/emergency_handler/emergency_handler_node.cpp
-  ${EMERGENCY_HANDLER_SRC}
-  ${EMERGENCY_HANDLER_HEADERS}
+find_package(catkin REQUIRED COMPONENTS
+  autoware_control_msgs
+  autoware_system_msgs
+  autoware_vehicle_msgs
+  geometry_msgs
+  roscpp
+  std_msgs
+  std_srvs
 )
 
-if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  ament_lint_auto_find_test_dependencies()
-endif()
+catkin_package(
+  INCLUDE_DIRS
+    include
+  CATKIN_DEPENDS
+    autoware_control_msgs
+    autoware_system_msgs
+    autoware_vehicle_msgs
+    geometry_msgs
+    std_msgs
+    std_srvs
+)
 
-ament_auto_package(INSTALL_TO_SHARE
-  launch
-  config
+include_directories(
+  include
+  ${catkin_INCLUDE_DIRS}
+)
+
+# Target
+## emergency_handler_node
+add_executable(emergency_handler
+  src/emergency_handler_node/main.cpp
+  src/emergency_handler_node/emergency_handler_node.cpp
+)
+
+target_link_libraries(emergency_handler
+  ${catkin_LIBRARIES}
+)
+
+add_dependencies(emergency_handler
+  ${${PROJECT_NAME}_EXPORTED_TARGETS}
+  ${catkin_EXPORTED_TARGETS}
+)
+
+## state_timeout_checker_node
+add_executable(state_timeout_checker
+  src/state_timeout_checker_node/main.cpp
+  src/state_timeout_checker_node/state_timeout_checker_node.cpp
+)
+
+target_link_libraries(state_timeout_checker
+  ${catkin_LIBRARIES}
+)
+
+add_dependencies(state_timeout_checker
+  ${${PROJECT_NAME}_EXPORTED_TARGETS}
+  ${catkin_EXPORTED_TARGETS}
+)
+
+# Install
+## executables and libraries
+install(
+  TARGETS
+    emergency_handler
+    state_timeout_checker
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+## project namespaced headers
+install(DIRECTORY include/${PROJECT_NAME}/
+  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+)
+
+## directories
+install(
+  DIRECTORY
+    launch
+    config
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )

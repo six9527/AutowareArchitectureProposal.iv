@@ -1,27 +1,27 @@
-// Copyright 2020 Autoware Foundation
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2020 Autoware Foundation. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 /**
  * @file hdd_monitor.cpp
  * @brief HDD monitor class
  */
 
-#include "system_monitor/hdd_monitor/hdd_monitor.hpp"
-
-#include "system_monitor/system_monitor_utility.hpp"
-
-#include <hdd_reader/hdd_reader.hpp>
+#include <algorithm>
+#include <string>
+#include <vector>
 
 #include <boost/algorithm/string.hpp>
 #include <boost/archive/text_iarchive.hpp>
@@ -31,33 +31,36 @@
 
 #include <fmt/format.h>
 
-#include <algorithm>
-#include <string>
-#include <vector>
+#include <hdd_reader/hdd_reader.h>
+#include <system_monitor/hdd_monitor/hdd_monitor.h>
 
 namespace bp = boost::process;
 
-HDDMonitor::HDDMonitor(const rclcpp::NodeOptions & options)
-: Node("hdd_monitor", options),
-  updater_(this),
-  hdd_reader_port_(declare_parameter<int>("hdd_reader_port", 7635))
+HDDMonitor::HDDMonitor(const ros::NodeHandle & nh, const ros::NodeHandle & pnh) : nh_(nh), pnh_(pnh)
 {
   gethostname(hostname_, sizeof(hostname_));
 
   getHDDParams();
+  pnh_.param<int>("hdd_reader_port", hdd_reader_port_, 7635);
 
   updater_.setHardwareID(hostname_);
   updater_.add("HDD Temperature", this, &HDDMonitor::checkTemp);
   updater_.add("HDD Usage", this, &HDDMonitor::checkUsage);
 }
 
-void HDDMonitor::update() { updater_.force_update(); }
+void HDDMonitor::run()
+{
+  ros::Rate rate(1.0);
+
+  while (ros::ok()) {
+    ros::spinOnce();
+    updater_.force_update();
+    rate.sleep();
+  }
+}
 
 void HDDMonitor::checkTemp(diagnostic_updater::DiagnosticStatusWrapper & stat)
 {
-  // Remember start time to measure elapsed time
-  const auto t_start = SystemMonitorUtility::startMeasurement();
-
   if (hdd_params_.empty()) {
     stat.summary(DiagStatus::ERROR, "invalid disk parameter");
     return;
@@ -106,7 +109,7 @@ void HDDMonitor::checkTemp(diagnostic_updater::DiagnosticStatusWrapper & stat)
   if (ret < 0) {
     stat.summary(DiagStatus::ERROR, "write error");
     stat.add("write", strerror(errno));
-    RCLCPP_ERROR(get_logger(), "write error");
+    ROS_ERROR("write error");
     close(sock);
     return;
   }
@@ -176,11 +179,10 @@ void HDDMonitor::checkTemp(diagnostic_updater::DiagnosticStatusWrapper & stat)
     float temp = static_cast<float>(itrh->second.temp_);
 
     level = DiagStatus::OK;
-    if (temp >= itr->second.temp_error_) {
+    if (temp >= itr->second.temp_error_)
       level = DiagStatus::ERROR;
-    } else if (temp >= itr->second.temp_warn_) {
+    else if (temp >= itr->second.temp_warn_)
       level = DiagStatus::WARN;
-    }
 
     stat.add(fmt::format("HDD {}: status", index), temp_dict_.at(level));
     stat.add(fmt::format("HDD {}: name", index), itr->first.c_str());
@@ -191,21 +193,14 @@ void HDDMonitor::checkTemp(diagnostic_updater::DiagnosticStatusWrapper & stat)
     whole_level = std::max(whole_level, level);
   }
 
-  if (!error_str.empty()) {
+  if (!error_str.empty())
     stat.summary(DiagStatus::ERROR, error_str);
-  } else {
+  else
     stat.summary(whole_level, temp_dict_.at(whole_level));
-  }
-
-  // Measure elapsed time since start time and report
-  SystemMonitorUtility::stopMeasurement(t_start, stat);
 }
 
 void HDDMonitor::checkUsage(diagnostic_updater::DiagnosticStatusWrapper & stat)
 {
-  // Remember start time to measure elapsed time
-  const auto t_start = SystemMonitorUtility::startMeasurement();
-
   if (hdd_params_.empty()) {
     stat.summary(DiagStatus::ERROR, "invalid disk parameter");
     return;
@@ -221,7 +216,7 @@ void HDDMonitor::checkUsage(diagnostic_updater::DiagnosticStatusWrapper & stat)
     bp::ipstream is_err;
     // Invoke shell to use shell wildcard expansion
     bp::child c(
-      "/bin/sh", "-c", fmt::format("df -Pm {}*", itr->first.c_str()), bp::std_out > is_out,
+      "/bin/sh", "-c", fmt::format("df -Pht ext4 {}*", itr->first.c_str()), bp::std_out > is_out,
       bp::std_err > is_err);
     c.wait();
 
@@ -239,7 +234,7 @@ void HDDMonitor::checkUsage(diagnostic_updater::DiagnosticStatusWrapper & stat)
     std::string line;
     int index = 0;
     std::vector<std::string> list;
-    int avail;
+    float usage;
 
     while (std::getline(is_out, line) && !line.empty()) {
       // Skip header
@@ -250,69 +245,64 @@ void HDDMonitor::checkUsage(diagnostic_updater::DiagnosticStatusWrapper & stat)
 
       boost::split(list, line, boost::is_space(), boost::token_compress_on);
 
-      try {
-        avail = std::stoi(list[3].c_str());
-      } catch (std::exception & e) {
-        avail = -1;
-        error_str = e.what();
-        stat.add(fmt::format("HDD {}: status", hdd_index), "avail string error");
-      }
+      usage = std::atof(boost::trim_copy_if(list[4], boost::is_any_of("%")).c_str()) * 1e-2;
 
-      if (avail <= itr->second.free_error_) {
+      level = DiagStatus::OK;
+      if (usage >= itr->second.usage_error_)
         level = DiagStatus::ERROR;
-      } else if (avail <= itr->second.free_warn_) {
+      else if (usage >= itr->second.usage_warn_)
         level = DiagStatus::WARN;
-      } else {
-        level = DiagStatus::OK;
-      }
 
       stat.add(fmt::format("HDD {}: status", hdd_index), usage_dict_.at(level));
       stat.add(fmt::format("HDD {}: filesystem", hdd_index), list[0].c_str());
-      stat.add(fmt::format("HDD {}: size (MB)", hdd_index), list[1].c_str());
-      stat.add(fmt::format("HDD {}: used (MB)", hdd_index), list[2].c_str());
-      stat.add(fmt::format("HDD {}: avail (MB)", hdd_index), list[3].c_str());
+      stat.add(fmt::format("HDD {}: size", hdd_index), list[1].c_str());
+      stat.add(fmt::format("HDD {}: used", hdd_index), list[2].c_str());
+      stat.add(fmt::format("HDD {}: avail", hdd_index), list[3].c_str());
       stat.add(fmt::format("HDD {}: use", hdd_index), list[4].c_str());
-      std::string mounted_ = list[5];
-      if (list.size() > 6) {
-        std::string::size_type pos = line.find("% /");
-        if (pos != std::string::npos) {
-          mounted_ = line.substr(pos + 2);  // 2 is "% " length
-        }
-      }
-      stat.add(fmt::format("HDD {}: mounted on", hdd_index), mounted_.c_str());
+      stat.add(fmt::format("HDD {}: mounted on", hdd_index), list[5].c_str());
 
       whole_level = std::max(whole_level, level);
       ++index;
     }
   }
 
-  if (!error_str.empty()) {
+  if (!error_str.empty())
     stat.summary(DiagStatus::ERROR, error_str);
-  } else {
+  else
     stat.summary(whole_level, usage_dict_.at(whole_level));
-  }
-
-  // Measure elapsed time since start time and report
-  SystemMonitorUtility::stopMeasurement(t_start, stat);
 }
 
 void HDDMonitor::getHDDParams()
 {
-  const auto num_disks = this->declare_parameter("num_disks", 0);
-  for (auto i = 0; i < num_disks; ++i) {
-    const auto prefix = "disks.disk" + std::to_string(i);
+  XmlRpc::XmlRpcValue params;
+
+  pnh_.getParam("disks", params);
+  if (params.getType() != XmlRpc::XmlRpcValue::TypeArray) return;
+
+  for (int i = 0; i < params.size(); ++i) {
+    std::string name;
     HDDParam param;
-    param.temp_warn_ = declare_parameter<float>(prefix + ".temp_warn");
-    param.temp_error_ = declare_parameter<float>(prefix + ".temp_error");
-    param.free_warn_ = declare_parameter<int>(prefix + ".free_warn");
-    param.free_error_ = declare_parameter<int>(prefix + ".free_error");
-    const auto name = declare_parameter<std::string>(prefix + ".name");
+
+    // Skip no name
+    if (!params[i]["name"].valid()) continue;
+
+    if (params[i]["name"].getType() == XmlRpc::XmlRpcValue::TypeString)
+      name = static_cast<std::string>(params[i]["name"]);
+
+    if (params[i]["temp_warn"].getType() == XmlRpc::XmlRpcValue::TypeDouble)
+      param.temp_warn_ = static_cast<double>(params[i]["temp_warn"]);
+
+    if (params[i]["temp_error"].getType() == XmlRpc::XmlRpcValue::TypeDouble)
+      param.temp_error_ = static_cast<double>(params[i]["temp_error"]);
+
+    if (params[i]["usage_warn"].getType() == XmlRpc::XmlRpcValue::TypeDouble)
+      param.usage_warn_ = static_cast<double>(params[i]["usage_warn"]);
+
+    if (params[i]["usage_error"].getType() == XmlRpc::XmlRpcValue::TypeDouble)
+      param.usage_error_ = static_cast<double>(params[i]["usage_error"]);
 
     hdd_params_[name] = param;
 
     hdd_devices_.push_back(name);
   }
 }
-
-#include <rclcpp_components/register_node_macro.hpp>
-RCLCPP_COMPONENTS_REGISTER_NODE(HDDMonitor)

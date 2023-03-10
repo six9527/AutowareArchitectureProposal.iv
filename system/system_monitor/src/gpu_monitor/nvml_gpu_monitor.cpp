@@ -1,98 +1,86 @@
-// Copyright 2020 Autoware Foundation
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2020 Autoware Foundation. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 /**
  * @file nvml_gpu_monitor.cpp
  * @brief GPU monitor class
  */
 
-#include "system_monitor/gpu_monitor/nvml_gpu_monitor.hpp"
-
-#include "system_monitor/system_monitor_utility.hpp"
+#include <algorithm>
+#include <string>
+#include <vector>
 
 #include <boost/algorithm/string.hpp>
 
 #include <fmt/format.h>
-#include <sys/time.h>
 
-#include <algorithm>
-#include <list>
-#include <memory>
-#include <string>
-#include <vector>
+#include <system_monitor/gpu_monitor/nvml_gpu_monitor.h>
 
-GPUMonitor::GPUMonitor(const rclcpp::NodeOptions & options) : GPUMonitorBase("gpu_monitor", options)
+GPUMonitor::GPUMonitor(const ros::NodeHandle & nh, const ros::NodeHandle & pnh)
+: GPUMonitorBase(nh, pnh)
 {
   // Include frequency into GPU Thermal Throttling thus remove.
   updater_.removeByName("GPU Frequency");
 
-  nvmlReturn_t ret = nvmlInit();
-  if (ret != NVML_SUCCESS) {
-    RCLCPP_ERROR(this->get_logger(), "Failed to initialize NVML: %s\n", nvmlErrorString(ret));
-  }
+  nvmlReturn_t ret;
+
+  ret = nvmlInit();
+  if (ret != NVML_SUCCESS) ROS_ERROR("Failed to initialize NVML: %s\n", nvmlErrorString(ret));
 
   unsigned int deviceCount = 0;
   ret = nvmlDeviceGetCount(&deviceCount);
-  if (ret != NVML_SUCCESS) {
-    RCLCPP_ERROR(
-      this->get_logger(), "Failed to retrieve the number of compute devices: %s",
-      nvmlErrorString(ret));
-  }
+  if (ret != NVML_SUCCESS)
+    ROS_ERROR("Failed to retrieve the number of compute devices: %s", nvmlErrorString(ret));
 
-  for (unsigned int index = 0; index < deviceCount; ++index) {
-    gpu_info info{};
+  for (int index = 0; index < deviceCount; ++index) {
+    gpu_info info;
     ret = nvmlDeviceGetHandleByIndex(index, &info.device);
     if (ret != NVML_SUCCESS) {
-      RCLCPP_ERROR(
-        this->get_logger(), "Failed to acquire the handle for a particular device [%d]: %s", index,
+      ROS_ERROR(
+        "Failed to acquire the handle for a particular device [%d]: %s", index,
         nvmlErrorString(ret));
       continue;
     }
     ret = nvmlDeviceGetName(info.device, info.name, NVML_DEVICE_NAME_BUFFER_SIZE);
     if (ret != NVML_SUCCESS) {
-      RCLCPP_ERROR(
-        this->get_logger(), "Failed to retrieve the name of this device [%d]: %s", index,
-        nvmlErrorString(ret));
+      ROS_ERROR("Failed to retrieve the name of this device [%d]: %s", index, nvmlErrorString(ret));
       continue;
     }
     ret = nvmlDeviceGetPciInfo(info.device, &info.pci);
     if (ret != NVML_SUCCESS) {
-      RCLCPP_ERROR(
-        this->get_logger(), "Failed to retrieve the PCI attributes [%d]: %s", index,
-        nvmlErrorString(ret));
+      ROS_ERROR("Failed to retrieve the PCI attributes [%d]: %s", index, nvmlErrorString(ret));
       continue;
     }
     gpus_.push_back(info);
   }
 }
 
-void GPUMonitor::shut_down()
+void GPUMonitor::run(void)
 {
+  GPUMonitorBase::run();
+
   nvmlReturn_t ret = nvmlShutdown();
-  if (ret != NVML_SUCCESS) {
-    RCLCPP_ERROR(this->get_logger(), "Failed to shut down NVML: %s", nvmlErrorString(ret));
-  }
+  if (ret != NVML_SUCCESS) ROS_ERROR("Failed to shut down NVML: %s", nvmlErrorString(ret));
 }
 
 void GPUMonitor::checkTemp(diagnostic_updater::DiagnosticStatusWrapper & stat)
 {
-  // Remember start time to measure elapsed time
-  const auto t_start = SystemMonitorUtility::startMeasurement();
-
   int level = DiagStatus::OK;
   int index = 0;
-  nvmlReturn_t ret{};
+  nvmlReturn_t ret;
 
   if (gpus_.empty()) {
     stat.summary(DiagStatus::ERROR, "gpu not found");
@@ -112,28 +100,21 @@ void GPUMonitor::checkTemp(diagnostic_updater::DiagnosticStatusWrapper & stat)
 
     level = DiagStatus::OK;
     stat.addf(itr->name, "%d.0 DegC", temp);
-    if (temp >= temp_error_) {
+    if (temp >= temp_error_)
       level = std::max(level, static_cast<int>(DiagStatus::ERROR));
-    } else if (temp >= temp_warn_) {
+    else if (temp >= temp_warn_)
       level = std::max(level, static_cast<int>(DiagStatus::WARN));
-    }
   }
 
   stat.summary(level, temp_dict_.at(level));
-
-  // Measure elapsed time since start time and report
-  SystemMonitorUtility::stopMeasurement(t_start, stat);
 }
 
 void GPUMonitor::checkUsage(diagnostic_updater::DiagnosticStatusWrapper & stat)
 {
-  // Remember start time to measure elapsed time
-  const auto t_start = SystemMonitorUtility::startMeasurement();
-
   int level = DiagStatus::OK;
   int whole_level = DiagStatus::OK;
   int index = 0;
-  nvmlReturn_t ret{};
+  nvmlReturn_t ret;
 
   if (gpus_.empty()) {
     stat.summary(DiagStatus::ERROR, "gpu not found");
@@ -152,122 +133,27 @@ void GPUMonitor::checkUsage(diagnostic_updater::DiagnosticStatusWrapper & stat)
 
     level = DiagStatus::OK;
     float usage = static_cast<float>(itr->utilization.gpu) / 100.0;
-    if (usage >= gpu_usage_error_) {
+    if (usage >= gpu_usage_error_)
       level = std::max(level, static_cast<int>(DiagStatus::ERROR));
-    } else if (usage >= gpu_usage_warn_) {
+    else if (usage >= gpu_usage_warn_)
       level = std::max(level, static_cast<int>(DiagStatus::WARN));
-    }
 
     stat.add(fmt::format("GPU {}: status", index), load_dict_.at(level));
     stat.add(fmt::format("GPU {}: name", index), itr->name);
     stat.addf(fmt::format("GPU {}: usage", index), "%d.0%%", itr->utilization.gpu);
 
-    addProcessUsage(index, itr->device, stat);
-
     whole_level = std::max(whole_level, level);
   }
 
   stat.summary(whole_level, load_dict_.at(whole_level));
-
-  // Measure elapsed time since start time and report
-  SystemMonitorUtility::stopMeasurement(t_start, stat);
-}
-
-void GPUMonitor::addProcessUsage(
-  int index, nvmlDevice_t device, diagnostic_updater::DiagnosticStatusWrapper & stat)
-{
-  nvmlReturn_t ret{};
-  std::list<uint32_t> running_pid_list;
-
-  // Get Compute Process ID
-  uint32_t info_count = MAX_ARRAY_SIZE;
-  std::unique_ptr<nvmlProcessInfo_t[]> infos;
-  infos = std::make_unique<nvmlProcessInfo_t[]>(MAX_ARRAY_SIZE);
-  ret = nvmlDeviceGetComputeRunningProcesses_v2(device, &info_count, infos.get());
-  if (ret != NVML_SUCCESS) {
-    RCLCPP_WARN(
-      this->get_logger(), "Failed to nvmlDeviceGetComputeRunningProcesses_v2 NVML: %s",
-      nvmlErrorString(ret));
-    return;
-  }
-  for (uint32_t cnt = 0; cnt < info_count; ++cnt) {
-    running_pid_list.push_back(infos[cnt].pid);
-  }
-
-  // Get Graphics Process ID
-  info_count = MAX_ARRAY_SIZE;
-  infos = std::make_unique<nvmlProcessInfo_t[]>(MAX_ARRAY_SIZE);
-  ret = nvmlDeviceGetGraphicsRunningProcesses_v2(device, &info_count, infos.get());
-  if (ret != NVML_SUCCESS) {
-    RCLCPP_WARN(
-      this->get_logger(), "Failed to nvmlDeviceGetGraphicsRunningProcesses_v2 NVML: %s",
-      nvmlErrorString(ret));
-    return;
-  }
-  for (uint32_t cnt = 0; cnt < info_count; ++cnt) {
-    running_pid_list.push_back(infos[cnt].pid);
-  }
-
-  // Get util_count(1st call of nvmlDeviceGetProcessUtilization)
-  uint32_t util_count = 0;
-  ret = nvmlDeviceGetProcessUtilization(device, NULL, &util_count, current_timestamp_);
-  // This function result will not succeed, because arg[util_count(in)] is 0.
-  if (ret != NVML_ERROR_INSUFFICIENT_SIZE) {
-    RCLCPP_WARN(
-      this->get_logger(), "Failed to nvmlDeviceGetProcessUtilization(1st) NVML: %s",
-      nvmlErrorString(ret));
-    return;
-  }
-  // Check util_count
-  if (util_count <= 0) {
-    RCLCPP_WARN(this->get_logger(), "Illegal util_count: %d", util_count);
-    return;
-  }
-
-  // Get utils data(2nd call of nvmlDeviceGetProcessUtilization)
-  std::unique_ptr<nvmlProcessUtilizationSample_t[]> utils;
-  utils = std::make_unique<nvmlProcessUtilizationSample_t[]>(util_count);
-  ret = nvmlDeviceGetProcessUtilization(device, utils.get(), &util_count, current_timestamp_);
-  if (ret != NVML_SUCCESS) {
-    RCLCPP_WARN(
-      this->get_logger(), "Failed to nvmlDeviceGetProcessUtilization(2nd) NVML: %s",
-      nvmlErrorString(ret));
-    return;
-  }
-
-  // Add data to diagnostic
-  int add_cnt = 0;
-  for (uint32_t cnt = 0; cnt < util_count; ++cnt) {
-    for (auto pid : running_pid_list) {
-      // PID check, because it contains illegal PID data. ex) PID:0
-      if (utils[cnt].pid == pid) {
-        char name[MAX_NAME_LENGTH + 1] = {};
-        nvmlSystemGetProcessName(utils[cnt].pid, name, MAX_NAME_LENGTH);
-        stat.add(fmt::format("GPU {0}: process {1}: pid", index, add_cnt), utils[cnt].pid);
-        stat.add(fmt::format("GPU {0}: process {1}: name", index, add_cnt), name);
-        stat.addf(
-          fmt::format("GPU {0}: process {1}: usage", index, add_cnt), "%ld.0%%",
-          ((utils[cnt].smUtil != UINT32_MAX) ? utils[cnt].smUtil : 0));
-        ++add_cnt;
-        break;
-      }
-    }
-  }
-
-  // Update timestamp(usec)
-  rclcpp::Clock system_clock(RCL_SYSTEM_TIME);
-  current_timestamp_ = system_clock.now().nanoseconds() / 1000;
 }
 
 void GPUMonitor::checkMemoryUsage(diagnostic_updater::DiagnosticStatusWrapper & stat)
 {
-  // Remember start time to measure elapsed time
-  const auto t_start = SystemMonitorUtility::startMeasurement();
-
   int level = DiagStatus::OK;
   int whole_level = DiagStatus::OK;
   int index = 0;
-  nvmlReturn_t ret{};
+  nvmlReturn_t ret;
 
   if (gpus_.empty()) {
     stat.summary(DiagStatus::ERROR, "gpu not found");
@@ -288,11 +174,10 @@ void GPUMonitor::checkMemoryUsage(diagnostic_updater::DiagnosticStatusWrapper & 
 
     level = DiagStatus::OK;
     float usage = static_cast<float>(itr->utilization.memory) / 100.0;
-    if (usage >= memory_usage_error_) {
+    if (usage >= memory_usage_error_)
       level = std::max(level, static_cast<int>(DiagStatus::ERROR));
-    } else if (usage >= memory_usage_warn_) {
+    else if (usage >= memory_usage_warn_)
       level = std::max(level, static_cast<int>(DiagStatus::WARN));
-    }
 
     stat.add(fmt::format("GPU {}: status", index), load_dict_.at(level));
     stat.add(fmt::format("GPU {}: name", index), itr->name);
@@ -305,20 +190,14 @@ void GPUMonitor::checkMemoryUsage(diagnostic_updater::DiagnosticStatusWrapper & 
   }
 
   stat.summary(whole_level, load_dict_.at(whole_level));
-
-  // Measure elapsed time since start time and report
-  SystemMonitorUtility::stopMeasurement(t_start, stat);
 }
 
 void GPUMonitor::checkThrottling(diagnostic_updater::DiagnosticStatusWrapper & stat)
 {
-  // Remember start time to measure elapsed time
-  const auto t_start = SystemMonitorUtility::startMeasurement();
-
   int level = DiagStatus::OK;
   int whole_level = DiagStatus::OK;
   int index = 0;
-  nvmlReturn_t ret{};
+  nvmlReturn_t ret;
   std::vector<std::string> reasons;
 
   if (gpus_.empty()) {
@@ -350,7 +229,7 @@ void GPUMonitor::checkThrottling(diagnostic_updater::DiagnosticStatusWrapper & s
     while (clocksThrottleReasons) {
       unsigned long long flag = clocksThrottleReasons & ((~clocksThrottleReasons) + 1);  // NOLINT
       clocksThrottleReasons ^= flag;
-      reasons.emplace_back(reasonToString(flag));
+      reasons.push_back(reasonToString(flag));
 
       switch (flag) {
         case nvmlClocksThrottleReasonGpuIdle:
@@ -368,9 +247,7 @@ void GPUMonitor::checkThrottling(diagnostic_updater::DiagnosticStatusWrapper & s
     stat.add(fmt::format("GPU {}: name", index), itr->name);
     stat.addf(fmt::format("GPU {}: graphics clock", index), "%d MHz", clock);
 
-    if (reasons.empty()) {
-      reasons.emplace_back("ReasonNone");
-    }
+    if (reasons.empty()) reasons.emplace_back("ReasonNone");
 
     stat.add(fmt::format("GPU {}: reasons", index), boost::algorithm::join(reasons, ", "));
 
@@ -378,9 +255,6 @@ void GPUMonitor::checkThrottling(diagnostic_updater::DiagnosticStatusWrapper & s
   }
 
   stat.summary(whole_level, throttling_dict_.at(whole_level));
-
-  // Measure elapsed time since start time and report
-  SystemMonitorUtility::stopMeasurement(t_start, stat);
 }
 
 std::string GPUMonitor::toHumanReadable(unsigned long long size)  // NOLINT
@@ -396,6 +270,3 @@ std::string GPUMonitor::toHumanReadable(unsigned long long size)  // NOLINT
   const char * format = (dsize > 0 && dsize < 10) ? "{:.1f}{}" : "{:.0f}{}";
   return fmt::format(format, dsize, units[count]);
 }
-
-#include <rclcpp_components/register_node_macro.hpp>
-RCLCPP_COMPONENTS_REGISTER_NODE(GPUMonitor)

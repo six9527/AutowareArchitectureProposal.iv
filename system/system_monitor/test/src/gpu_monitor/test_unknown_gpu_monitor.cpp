@@ -1,69 +1,60 @@
-// Copyright 2020 Autoware Foundation
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-#include "system_monitor/gpu_monitor/unknown_gpu_monitor.hpp"
-
-#include <rclcpp/rclcpp.hpp>
+/*
+ * Copyright 2020 Autoware Foundation. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #include <gtest/gtest.h>
+#include <ros/ros.h>
+#include <system_monitor/gpu_monitor/unknown_gpu_monitor.h>
 
-#include <memory>
-#include <string>
-
-using DiagStatus = diagnostic_msgs::msg::DiagnosticStatus;
+using DiagStatus = diagnostic_msgs::DiagnosticStatus;
 
 class TestGPUMonitor : public GPUMonitor
 {
   friend class GPUMonitorTestSuite;
 
 public:
-  TestGPUMonitor(const std::string & node_name, const rclcpp::NodeOptions & options)
-  : GPUMonitor(node_name, options)
-  {
-  }
+  TestGPUMonitor(const ros::NodeHandle & nh, const ros::NodeHandle & pnh) : GPUMonitor(nh, pnh) {}
 
-  void diagCallback(const diagnostic_msgs::msg::DiagnosticArray::ConstSharedPtr diag_msg)
+  void diagCallback(const diagnostic_msgs::DiagnosticArray::ConstPtr & diag_msg)
   {
     array_ = *diag_msg;
   }
 
-  void update() { updater_.force_update(); }
+  void update(void) { updater_.force_update(); }
 
 private:
-  diagnostic_msgs::msg::DiagnosticArray array_;
+  diagnostic_msgs::DiagnosticArray array_;
 };
 
 class GPUMonitorTestSuite : public ::testing::Test
 {
 public:
-  GPUMonitorTestSuite() {}
+  GPUMonitorTestSuite() : nh_(""), pnh_("~") {}
 
 protected:
+  ros::NodeHandle nh_, pnh_;
   std::unique_ptr<TestGPUMonitor> monitor_;
-  rclcpp::Subscription<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr sub_;
+  ros::Subscriber sub_;
 
-  void SetUp()
+  void SetUp(void)
   {
-    using std::placeholders::_1;
-    rclcpp::init(0, nullptr);
-    rclcpp::NodeOptions node_options;
-    monitor_ = std::make_unique<TestGPUMonitor>("test_gpu_monitor", node_options);
-    sub_ = monitor_->create_subscription<diagnostic_msgs::msg::DiagnosticArray>(
-      "/diagnostics", 1000, std::bind(&TestGPUMonitor::diagCallback, monitor_.get(), _1));
+    monitor_ = std::make_unique<TestGPUMonitor>(nh_, pnh_);
+    sub_ = nh_.subscribe("/diagnostics", 1000, &TestGPUMonitor::diagCallback, monitor_.get());
   }
 
-  void TearDown() { rclcpp::shutdown(); }
+  void TearDown(void) {}
 };
 
 TEST_F(GPUMonitorTestSuite, test) { ASSERT_TRUE(true); }
@@ -71,6 +62,7 @@ TEST_F(GPUMonitorTestSuite, test) { ASSERT_TRUE(true); }
 int main(int argc, char ** argv)
 {
   testing::InitGoogleTest(&argc, argv);
+  ros::init(argc, argv, "GPUMonitorTestNode");
 
   return RUN_ALL_TESTS();
 }

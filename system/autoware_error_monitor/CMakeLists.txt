@@ -1,39 +1,65 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 2.8.3)
 project(autoware_error_monitor)
 
-### Compile options
-if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 14)
-  set(CMAKE_CXX_STANDARD_REQUIRED ON)
-  set(CMAKE_CXX_EXTENSIONS OFF)
-endif()
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic)
-endif()
+add_compile_options(-std=c++14)
 
-### Dependencies
-find_package(ament_cmake_auto REQUIRED)
-ament_auto_find_build_dependencies()
+find_package(catkin REQUIRED COMPONENTS
+  autoware_system_msgs
+  diagnostic_msgs
+  roscpp
+)
+
+find_package(fmt REQUIRED)
+
+catkin_package(
+  INCLUDE_DIRS
+    include
+  CATKIN_DEPENDS
+    autoware_system_msgs
+    diagnostic_msgs
+)
+
+include_directories(
+  include
+  ${catkin_INCLUDE_DIRS}
+)
 
 # Target
 ## autoware_error_monitor_node
-set(AUTOWARE_ERROR_MONITOR_SRC
-  src/autoware_error_monitor_core.cpp
+add_executable(autoware_error_monitor
+  src/autoware_error_monitor_node/main.cpp
+  src/autoware_error_monitor_node/autoware_error_monitor_node.cpp
 )
 
-ament_auto_add_executable(${PROJECT_NAME}
-  src/autoware_error_monitor_node.cpp
-  ${AUTOWARE_ERROR_MONITOR_SRC}
+target_link_libraries(autoware_error_monitor
+  fmt
+  ${catkin_LIBRARIES}
 )
 
-if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  ament_lint_auto_find_test_dependencies()
-endif()
+add_dependencies(autoware_error_monitor
+  ${${PROJECT_NAME}_EXPORTED_TARGETS}
+  ${catkin_EXPORTED_TARGETS}
+)
 
 # Install
 ## executables and libraries
-ament_auto_package(INSTALL_TO_SHARE
-  launch
-  config
+install(
+  TARGETS
+    autoware_error_monitor
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+## project namespaced headers
+install(DIRECTORY include/${PROJECT_NAME}/
+  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+)
+
+## directories
+install(
+  DIRECTORY
+    launch
+    config
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )

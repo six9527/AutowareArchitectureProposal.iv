@@ -1,20 +1,22 @@
-// Copyright 2020 Tier IV, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2020 Autoware Foundation. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
-#include "system_monitor/cpu_monitor/raspi_cpu_monitor.hpp"
-
-#include <rclcpp/rclcpp.hpp>
+#include <fstream>
+#include <string>
+#include <vector>
 
 #include <boost/algorithm/string.hpp>
 #include <boost/filesystem.hpp>
@@ -22,16 +24,14 @@
 
 #include <fmt/format.h>
 #include <gtest/gtest.h>
+#include <ros/ros.h>
 
-#include <fstream>
-#include <memory>
-#include <string>
-#include <vector>
+#include <system_monitor/cpu_monitor/raspi_cpu_monitor.h>
 
 static constexpr const char * TEST_FILE = "test";
 
 namespace fs = boost::filesystem;
-using DiagStatus = diagnostic_msgs::msg::DiagnosticStatus;
+using DiagStatus = diagnostic_msgs::DiagnosticStatus;
 
 char ** argv_;
 
@@ -40,21 +40,18 @@ class TestCPUMonitor : public CPUMonitor
   friend class CPUMonitorTestSuite;
 
 public:
-  TestCPUMonitor(const std::string & node_name, const rclcpp::NodeOptions & options)
-  : CPUMonitor(node_name, options)
-  {
-  }
+  TestCPUMonitor(const ros::NodeHandle & nh, const ros::NodeHandle & pnh) : CPUMonitor(nh, pnh) {}
 
-  void diagCallback(const diagnostic_msgs::msg::DiagnosticArray::ConstSharedPtr diag_msg)
+  void diagCallback(const diagnostic_msgs::DiagnosticArray::ConstPtr & diag_msg)
   {
     array_ = *diag_msg;
   }
 
   void addTempName(const std::string & path) { temps_.emplace_back(path, path); }
-  void clearTempNames() { temps_.clear(); }
+  void clearTempNames(void) { temps_.clear(); }
 
   void addFreqName(int index, const std::string & path) { freqs_.emplace_back(index, path); }
-  void clearFreqNames() { freqs_.clear(); }
+  void clearFreqNames(void) { freqs_.clear(); }
 
   void setMpstatExists(bool mpstat_exists) { mpstat_exists_ = mpstat_exists; }
 
@@ -64,7 +61,7 @@ public:
   void changeLoad1Warn(float load1_warn) { load1_warn_ = load1_warn; }
   void changeLoad5Warn(float load5_warn) { load5_warn_ = load5_warn; }
 
-  void update() { updater_.force_update(); }
+  void update(void) { updater_.force_update(); }
 
   const std::string removePrefix(const std::string & name)
   {
@@ -83,14 +80,14 @@ public:
   }
 
 private:
-  diagnostic_msgs::msg::DiagnosticArray array_;
-  const std::string prefix_ = std::string(this->get_name()) + ": ";
+  diagnostic_msgs::DiagnosticArray array_;
+  const std::string prefix_ = ros::this_node::getName().substr(1) + ": ";
 };
 
 class CPUMonitorTestSuite : public ::testing::Test
 {
 public:
-  CPUMonitorTestSuite()
+  CPUMonitorTestSuite() : nh_(""), pnh_("~")
   {
     // Get directory of executable
     const fs::path exe_path(argv_[0]);
@@ -100,43 +97,31 @@ public:
   }
 
 protected:
+  ros::NodeHandle nh_, pnh_;
   std::unique_ptr<TestCPUMonitor> monitor_;
-  rclcpp::Subscription<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr sub_;
+  ros::Subscriber sub_;
   std::string exe_dir_;
   std::string mpstat_;
 
-  void SetUp()
+  void SetUp(void)
   {
-    using std::placeholders::_1;
-    rclcpp::init(0, nullptr);
-    rclcpp::NodeOptions node_options;
-    monitor_ = std::make_unique<TestCPUMonitor>("test_cpu_monitor", node_options);
-    sub_ = monitor_->create_subscription<diagnostic_msgs::msg::DiagnosticArray>(
-      "/diagnostics", 1000, std::bind(&TestCPUMonitor::diagCallback, monitor_.get(), _1));
+    monitor_ = std::make_unique<TestCPUMonitor>(nh_, pnh_);
+    sub_ = nh_.subscribe("/diagnostics", 1000, &TestCPUMonitor::diagCallback, monitor_.get());
     monitor_->getTempNames();
     monitor_->getFreqNames();
 
     // Remove test file if exists
-    if (fs::exists(TEST_FILE)) {
-      fs::remove(TEST_FILE);
-    }
+    if (fs::exists(TEST_FILE)) fs::remove(TEST_FILE);
     // Remove dummy executable if exists
-    if (fs::exists(mpstat_)) {
-      fs::remove(mpstat_);
-    }
+    if (fs::exists(mpstat_)) fs::remove(mpstat_);
   }
 
-  void TearDown()
+  void TearDown(void)
   {
     // Remove test file if exists
-    if (fs::exists(TEST_FILE)) {
-      fs::remove(TEST_FILE);
-    }
+    if (fs::exists(TEST_FILE)) fs::remove(TEST_FILE);
     // Remove dummy executable if exists
-    if (fs::exists(mpstat_)) {
-      fs::remove(mpstat_);
-    }
-    rclcpp::shutdown();
+    if (fs::exists(mpstat_)) fs::remove(mpstat_);
   }
 
   bool findValue(const DiagStatus status, const std::string & key, std::string & value)  // NOLINT
@@ -150,12 +135,12 @@ protected:
     return false;
   }
 
-  void modifyPath()
+  void modifyPath(void)
   {
     // Modify PATH temporarily
     auto env = boost::this_process::environment();
     std::string new_path = env["PATH"].to_string();
-    new_path.insert(0, fmt::format("{}:", exe_dir_));
+    new_path.insert(0, fmt::format("{%}:", exe_dir_));
     env["PATH"] = new_path;
   }
 };
@@ -168,8 +153,8 @@ TEST_F(CPUMonitorTestSuite, tempWarnTest)
     monitor_->update();
 
     // Give time to publish
-    rclcpp::WallRate(2).sleep();
-    rclcpp::spin_some(monitor_->get_node_base_interface());
+    ros::WallDuration(0.5).sleep();
+    ros::spinOnce();
 
     // Verify
     DiagStatus status;
@@ -190,8 +175,8 @@ TEST_F(CPUMonitorTestSuite, tempWarnTest)
     monitor_->update();
 
     // Give time to publish
-    rclcpp::WallRate(2).sleep();
-    rclcpp::spin_some(monitor_->get_node_base_interface());
+    ros::WallDuration(0.5).sleep();
+    ros::spinOnce();
 
     // Verify
     DiagStatus status;
@@ -209,8 +194,8 @@ TEST_F(CPUMonitorTestSuite, tempWarnTest)
     monitor_->update();
 
     // Give time to publish
-    rclcpp::WallRate(2).sleep();
-    rclcpp::spin_some(monitor_->get_node_base_interface());
+    ros::WallDuration(0.5).sleep();
+    ros::spinOnce();
 
     // Verify
     DiagStatus status;
@@ -227,8 +212,8 @@ TEST_F(CPUMonitorTestSuite, tempErrorTest)
     monitor_->update();
 
     // Give time to publish
-    rclcpp::WallRate(2).sleep();
-    rclcpp::spin_some(monitor_->get_node_base_interface());
+    ros::WallDuration(0.5).sleep();
+    ros::spinOnce();
 
     // Verify
     DiagStatus status;
@@ -249,8 +234,8 @@ TEST_F(CPUMonitorTestSuite, tempErrorTest)
     monitor_->update();
 
     // Give time to publish
-    rclcpp::WallRate(2).sleep();
-    rclcpp::spin_some(monitor_->get_node_base_interface());
+    ros::WallDuration(0.5).sleep();
+    ros::spinOnce();
 
     // Verify
     DiagStatus status;
@@ -268,8 +253,8 @@ TEST_F(CPUMonitorTestSuite, tempErrorTest)
     monitor_->update();
 
     // Give time to publish
-    rclcpp::WallRate(2).sleep();
-    rclcpp::spin_some(monitor_->get_node_base_interface());
+    ros::WallDuration(0.5).sleep();
+    ros::spinOnce();
 
     // Verify
     DiagStatus status;
@@ -287,8 +272,8 @@ TEST_F(CPUMonitorTestSuite, tempTemperatureFilesNotFoundTest)
   monitor_->update();
 
   // Give time to publish
-  rclcpp::WallRate(2).sleep();
-  rclcpp::spin_some(monitor_->get_node_base_interface());
+  ros::WallDuration(0.5).sleep();
+  ros::spinOnce();
 
   // Verify
   DiagStatus status;
@@ -306,8 +291,8 @@ TEST_F(CPUMonitorTestSuite, tempFileOpenErrorTest)
   monitor_->update();
 
   // Give time to publish
-  rclcpp::WallRate(2).sleep();
-  rclcpp::spin_some(monitor_->get_node_base_interface());
+  ros::WallDuration(0.5).sleep();
+  ros::spinOnce();
 
   // Verify
   DiagStatus status;
@@ -327,8 +312,8 @@ TEST_F(CPUMonitorTestSuite, usageWarnTest)
     monitor_->update();
 
     // Give time to publish
-    rclcpp::WallRate(2).sleep();
-    rclcpp::spin_some(monitor_->get_node_base_interface());
+    ros::WallDuration(0.5).sleep();
+    ros::spinOnce();
 
     // Verify
     DiagStatus status;
@@ -346,8 +331,8 @@ TEST_F(CPUMonitorTestSuite, usageWarnTest)
     monitor_->update();
 
     // Give time to publish
-    rclcpp::WallRate(2).sleep();
-    rclcpp::spin_some(monitor_->get_node_base_interface());
+    ros::WallDuration(0.5).sleep();
+    ros::spinOnce();
 
     // Verify
     DiagStatus status;
@@ -364,8 +349,8 @@ TEST_F(CPUMonitorTestSuite, usageWarnTest)
     monitor_->update();
 
     // Give time to publish
-    rclcpp::WallRate(2).sleep();
-    rclcpp::spin_some(monitor_->get_node_base_interface());
+    ros::WallDuration(0.5).sleep();
+    ros::spinOnce();
 
     // Verify
     DiagStatus status;
@@ -382,8 +367,8 @@ TEST_F(CPUMonitorTestSuite, usageErrorTest)
     monitor_->update();
 
     // Give time to publish
-    rclcpp::WallRate(2).sleep();
-    rclcpp::spin_some(monitor_->get_node_base_interface());
+    ros::WallDuration(0.5).sleep();
+    ros::spinOnce();
 
     // Verify
     DiagStatus status;
@@ -401,8 +386,8 @@ TEST_F(CPUMonitorTestSuite, usageErrorTest)
     monitor_->update();
 
     // Give time to publish
-    rclcpp::WallRate(2).sleep();
-    rclcpp::spin_some(monitor_->get_node_base_interface());
+    ros::WallDuration(0.5).sleep();
+    ros::spinOnce();
 
     // Verify
     DiagStatus status;
@@ -419,8 +404,8 @@ TEST_F(CPUMonitorTestSuite, usageErrorTest)
     monitor_->update();
 
     // Give time to publish
-    rclcpp::WallRate(2).sleep();
-    rclcpp::spin_some(monitor_->get_node_base_interface());
+    ros::WallDuration(0.5).sleep();
+    ros::spinOnce();
 
     // Verify
     DiagStatus status;
@@ -438,8 +423,8 @@ TEST_F(CPUMonitorTestSuite, usageMpstatNotFoundTest)
   monitor_->update();
 
   // Give time to publish
-  rclcpp::WallRate(2).sleep();
-  rclcpp::spin_some(monitor_->get_node_base_interface());
+  ros::WallDuration(0.5).sleep();
+  ros::spinOnce();
 
   // Verify
   DiagStatus status;
@@ -461,8 +446,8 @@ TEST_F(CPUMonitorTestSuite, load1WarnTest)
     monitor_->update();
 
     // Give time to publish
-    rclcpp::WallRate(2).sleep();
-    rclcpp::spin_some(monitor_->get_node_base_interface());
+    ros::WallDuration(0.5).sleep();
+    ros::spinOnce();
 
     // Verify
     DiagStatus status;
@@ -480,8 +465,8 @@ TEST_F(CPUMonitorTestSuite, load1WarnTest)
     monitor_->update();
 
     // Give time to publish
-    rclcpp::WallRate(2).sleep();
-    rclcpp::spin_some(monitor_->get_node_base_interface());
+    ros::WallDuration(0.5).sleep();
+    ros::spinOnce();
 
     // Verify
     DiagStatus status;
@@ -498,8 +483,8 @@ TEST_F(CPUMonitorTestSuite, load1WarnTest)
     monitor_->update();
 
     // Give time to publish
-    rclcpp::WallRate(2).sleep();
-    rclcpp::spin_some(monitor_->get_node_base_interface());
+    ros::WallDuration(0.5).sleep();
+    ros::spinOnce();
 
     // Verify
     DiagStatus status;
@@ -516,8 +501,8 @@ TEST_F(CPUMonitorTestSuite, load5WarnTest)
     monitor_->update();
 
     // Give time to publish
-    rclcpp::WallRate(2).sleep();
-    rclcpp::spin_some(monitor_->get_node_base_interface());
+    ros::WallDuration(0.5).sleep();
+    ros::spinOnce();
 
     // Verify
     DiagStatus status;
@@ -535,8 +520,8 @@ TEST_F(CPUMonitorTestSuite, load5WarnTest)
     monitor_->update();
 
     // Give time to publish
-    rclcpp::WallRate(2).sleep();
-    rclcpp::spin_some(monitor_->get_node_base_interface());
+    ros::WallDuration(0.5).sleep();
+    ros::spinOnce();
 
     // Verify
     DiagStatus status;
@@ -553,8 +538,8 @@ TEST_F(CPUMonitorTestSuite, load5WarnTest)
     monitor_->update();
 
     // Give time to publish
-    rclcpp::WallRate(2).sleep();
-    rclcpp::spin_some(monitor_->get_node_base_interface());
+    ros::WallDuration(0.5).sleep();
+    ros::spinOnce();
 
     // Verify
     DiagStatus status;
@@ -563,14 +548,14 @@ TEST_F(CPUMonitorTestSuite, load5WarnTest)
   }
 }
 
-TEST_F(CPUMonitorTestSuite, DISABLED_throttlingTest)
+TEST_F(CPUMonitorTestSuite, throttlingTest)
 {
   // Publish topic
   monitor_->update();
 
   // Give time to publish
-  rclcpp::WallRate(2).sleep();
-  rclcpp::spin_some(monitor_->get_node_base_interface());
+  ros::WallDuration(0.5).sleep();
+  ros::spinOnce();
 
   // Verify
   DiagStatus status;
@@ -584,8 +569,8 @@ TEST_F(CPUMonitorTestSuite, freqTest)
   monitor_->update();
 
   // Give time to publish
-  rclcpp::WallRate(2).sleep();
-  rclcpp::spin_some(monitor_->get_node_base_interface());
+  ros::WallDuration(0.5).sleep();
+  ros::spinOnce();
 
   // Verify
   DiagStatus status;
@@ -602,8 +587,8 @@ TEST_F(CPUMonitorTestSuite, freqFrequencyFilesNotFoundTest)
   monitor_->update();
 
   // Give time to publish
-  rclcpp::WallRate(2).sleep();
-  rclcpp::spin_some(monitor_->get_node_base_interface());
+  ros::WallDuration(0.5).sleep();
+  ros::spinOnce();
 
   // Verify
   DiagStatus status;
@@ -625,8 +610,8 @@ TEST_F(CPUMonitorTestSuite, usageMpstatErrorTest)
   monitor_->update();
 
   // Give time to publish
-  rclcpp::WallRate(2).sleep();
-  rclcpp::spin_some(monitor_->get_node_base_interface());
+  ros::WallDuration(0.5).sleep();
+  ros::spinOnce();
 
   // Verify
   DiagStatus status;
@@ -650,8 +635,8 @@ TEST_F(CPUMonitorTestSuite, usageMpstatExceptionTest)
   monitor_->update();
 
   // Give time to publish
-  rclcpp::WallRate(2).sleep();
-  rclcpp::spin_some(monitor_->get_node_base_interface());
+  ros::WallDuration(0.5).sleep();
+  ros::spinOnce();
 
   // Verify
   DiagStatus status;
@@ -668,18 +653,15 @@ class DummyCPUMonitor : public CPUMonitorBase
   friend class CPUMonitorTestSuite;
 
 public:
-  DummyCPUMonitor(const std::string & node_name, const rclcpp::NodeOptions & options)
-  : CPUMonitorBase(node_name, options)
+  DummyCPUMonitor(const ros::NodeHandle & nh, const ros::NodeHandle & pnh) : CPUMonitorBase(nh, pnh)
   {
   }
-  void update() { updater_.force_update(); }
+  void update(void) { updater_.force_update(); }
 };
 
 TEST_F(CPUMonitorTestSuite, dummyCPUMonitorTest)
 {
-  rclcpp::NodeOptions options;
-  std::unique_ptr<DummyCPUMonitor> monitor =
-    std::make_unique<DummyCPUMonitor>("dummy_cpu_monitor", options);
+  std::unique_ptr<DummyCPUMonitor> monitor = std::make_unique<DummyCPUMonitor>(nh_, pnh_);
   monitor->getTempNames();
   monitor->getFreqNames();
   // Publish topic
@@ -690,6 +672,7 @@ int main(int argc, char ** argv)
 {
   argv_ = argv;
   testing::InitGoogleTest(&argc, argv);
+  ros::init(argc, argv, "CPUMonitorTestNode");
 
   return RUN_ALL_TESTS();
 }

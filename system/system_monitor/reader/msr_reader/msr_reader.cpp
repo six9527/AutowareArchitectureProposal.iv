@@ -1,27 +1,23 @@
-// Copyright 2020 Autoware Foundation
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2020 Autoware Foundation. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 /**
  * @file msr_reader.cpp
  * @brief MSR read class
  */
-
-#include <msr_reader/msr_reader.hpp>
-
-#include <boost/archive/text_oarchive.hpp>
-#include <boost/filesystem.hpp>
-#include <boost/lexical_cast.hpp>
 
 #include <errno.h>
 #include <fcntl.h>
@@ -41,6 +37,12 @@
 #include <string>
 #include <vector>
 
+#include <boost/archive/text_oarchive.hpp>
+#include <boost/filesystem.hpp>
+#include <boost/lexical_cast.hpp>
+
+#include <msr_reader/msr_reader.h>
+
 namespace fs = boost::filesystem;
 
 // 7634-7647 Unassigned
@@ -59,23 +61,23 @@ typedef struct
   uint64_t pkg_prochot_event_ : 1;                //!< @brief 2 Pkg PROCHOT # event (RO)
   uint64_t pkg_prochot_log_ : 1;                  //!< @brief 3 Pkg PROCHOT # log (R/WC0)
   uint64_t pkg_critical_temperature_status_ : 1;  //!< @brief 4 Pkg Critical Temperature Status (RO)
-  uint64_t                                        //!< @brief 5 Pkg Critical Temperature
-    pkg_critical_temperature_status_log_ : 1;     //!<   Status Log (R/WC0)
-  uint64_t pkg_thermal_threshold_1_status_ : 1;   //!< @brief 6 Pkg Thermal Threshold #1 Status (RO)
-  uint64_t pkg_thermal_threshold_1_log_ : 1;      //!< @brief 7 Pkg Thermal Threshold #1 log (R/WC0)
-  uint64_t pkg_thermal_threshold_2_status_ : 1;   //!< @brief 8 Pkg Thermal Threshold #2 Status (RO)
-  uint64_t pkg_thermal_threshold_2_log_ : 1;      //!< @brief 9 Pkg Thermal Threshold #2 log (R/WC0)
-  uint64_t pkg_power_limitation_status_ : 1;      //!< @brief 10 Pkg Power Limitation Status (RO)
-  uint64_t pkg_power_limitation_log_ : 1;         //!< @brief 11 Pkg Power Limitation log (R/WC0)
-  uint64_t reserved1_ : 4;                        //!< @brief 15:12 Reserved
-  uint64_t pkg_digital_readout_ : 7;              //!< @brief 22:16 Pkg Digital Readout (RO)
-  uint64_t reserved2_ : 41;                       //!< @brief 63:23 Reserved
+  uint64_t
+    pkg_critical_temperature_status_log_ : 1;  //!< @brief 5 Pkg Critical Temperature Status Log (R/WC0)
+  uint64_t pkg_thermal_threshold_1_status_ : 1;  //!< @brief 6 Pkg Thermal Threshold #1 Status (RO)
+  uint64_t pkg_thermal_threshold_1_log_ : 1;     //!< @brief 7 Pkg Thermal Threshold #1 log (R/WC0)
+  uint64_t pkg_thermal_threshold_2_status_ : 1;  //!< @brief 8 Pkg Thermal Threshold #2 Status (RO)
+  uint64_t pkg_thermal_threshold_2_log_ : 1;     //!< @brief 9 Pkg Thermal Threshold #2 log (R/WC0)
+  uint64_t pkg_power_limitation_status_ : 1;     //!< @brief 10 Pkg Power Limitation Status (RO)
+  uint64_t pkg_power_limitation_log_ : 1;        //!< @brief 11 Pkg Power Limitation log (R/WC0)
+  uint64_t reserved1_ : 4;                       //!< @brief 15:12 Reserved
+  uint64_t pkg_digital_readout_ : 7;             //!< @brief 22:16 Pkg Digital Readout (RO)
+  uint64_t reserved2_ : 41;                      //!< @brief 63:23 Reserved
 } PackageThermalStatus;
 
 /**
  * @brief print usage
  */
-void usage()
+void usage(void)
 {
   printf("Usage: msr_reader [options]\n");
   printf("  -h --help   : Display help\n");
@@ -145,7 +147,7 @@ void run(int port, const std::vector<std::string> & list)
     ret = 0;
     std::ostringstream oss;
     boost::archive::text_oarchive oa(oss);
-    MSRInfo msr{0, {}};
+    MSRInfo msr = {0};
 
     for (auto itr = list.begin(); itr != list.end(); ++itr) {
       // Open a file
@@ -233,17 +235,13 @@ int main(int argc, char ** argv)
 
   for (const fs::path & path : boost::make_iterator_range(
          fs::recursive_directory_iterator(root), fs::recursive_directory_iterator())) {
-    if (fs::is_directory(path)) {
-      continue;
-    }
+    if (fs::is_directory(path)) continue;
 
     std::cmatch match;
     const char * msr = path.generic_string().c_str();
 
     // /dev/cpu/[0-9]/msr ?
-    if (!std::regex_match(msr, match, std::regex(".*msr"))) {
-      continue;
-    }
+    if (!std::regex_match(msr, match, std::regex(".*msr"))) continue;
 
     list.push_back(path.generic_string());
   }
@@ -253,12 +251,8 @@ int main(int argc, char ** argv)
     const std::regex filter(".*/(\\d+)/msr");
     int n1 = 0;
     int n2 = 0;
-    if (std::regex_match(c1.c_str(), match, filter)) {
-      n1 = std::stoi(match[1].str());
-    }
-    if (std::regex_match(c2.c_str(), match, filter)) {
-      n2 = std::stoi(match[1].str());
-    }
+    if (std::regex_match(c1.c_str(), match, filter)) n1 = std::stoi(match[1].str());
+    if (std::regex_match(c2.c_str(), match, filter)) n2 = std::stoi(match[1].str());
     return n1 < n2;
   });  // NOLINT
 

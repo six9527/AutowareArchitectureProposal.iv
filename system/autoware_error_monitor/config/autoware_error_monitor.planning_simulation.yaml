@@ -1,0 +1,66 @@
+# Description:
+#   name: diag name
+#   sf_at: diag level where it becomes Safe Fault
+#   lf_at: diag level where it becomes Latent Fault
+#   spf_at: diag level where it becomes Single Point Fault
+#
+# Note:
+# empty-value for sf_at, lf_at and spf_at is "none"
+# default values are:
+#   sf_at: "none"
+#   lf_at: "warn"
+#   spf_at: "error"
+
+required_modules:
+  autonomous_driving:
+    - { name: "/control/autonomous_driving/alive_monitoring" }
+    - { name: "/control/autonomous_driving/lane_departure" }
+    # - { name: "/control/autonomous_driving/trajectory_deviation" } # Unstable
+    - { name: "/control/command_gate/alive_monitoring" }
+
+    - { name: "/localization/alive_monitoring" }
+    - { name: "/localization/matching_score", sf_at: "warn", lf_at: "error", spf_at: "none" }
+    - { name: "/localization/localization_accuracy" }
+
+    - { name: "/map/alive_monitoring" }
+    - { name: "/map/map_version" }
+
+    - { name: "/perception/alive_monitoring" }
+
+    - { name: "/planning/alive_monitoring" }
+
+    - { name: "/sensing/alive_monitoring" }
+    - { name: "/sensing/camera" }
+    - { name: "/sensing/gnss", sf_at: "warn", lf_at: "error", spf_at: "none" }
+    - { name: "/sensing/imu" }
+    - { name: "/sensing/lidar" }
+
+    - { name: "/system/alive_monitoring" }
+    - { name: "/system/emergency_stop_operation" }
+    - { name: "/system/logging", sf_at: "warn", lf_at: "none", spf_at: "none" }
+    # - { name: "/system/resource_monitoring/cpu_temperature", sf_at: "warn", lf_at: "error", spf_at: "none" } # Not working in containers
+    # - { name: "/system/resource_monitoring/cpu_usage", sf_at: "warn", lf_at: "error", spf_at: "none" } # No need to watch in simulation
+    # - { name: "/system/resource_monitoring/cpu_thermal_throttling", sf_at: "warn", lf_at: "error", spf_at: "none" } # Require setup
+    # - { name: "/system/resource_monitoring/hdd_temperature", sf_at: "warn", lf_at: "error", spf_at: "none" } # Require setup
+    # - { name: "/system/resource_monitoring/hdd_usage", sf_at: "warn", lf_at: "error", spf_at: "none" } # Not working in containers
+    # - { name: "/system/resource_monitoring/memory_usage", sf_at: "warn", lf_at: "error", spf_at: "none" } # No need to watch in simulation
+    # - { name: "/system/resource_monitoring/network_usage", sf_at: "warn", lf_at: "error", spf_at: "none" } # No need to watch in simulation
+    # - { name: "/system/resource_monitoring/ntp_offset", sf_at: "warn", lf_at: "error", spf_at: "none" } # No need to watch in simulation
+    # - { name: "/system/resource_monitoring/gpu_temperature", sf_at: "warn", lf_at: "error", spf_at: "none" } # Require GPU
+    # - { name: "/system/resource_monitoring/gpu_usage", sf_at: "warn", lf_at: "error", spf_at: "none" } # Require GPU
+    # - { name: "/system/resource_monitoring/gpu_memory_usage", sf_at: "warn", lf_at: "error", spf_at: "none" } # Require GPU
+    # - { name: "/system/resource_monitoring/gpu_thermal_throttling", sf_at: "warn", lf_at: "error", spf_at: "none" } # Require GPU
+
+    - { name: "/vehicle/alive_monitoring" }
+    - { name: "/vehicle/vehicle_errors" }
+    - { name: "/vehicle/obstacle_crush" }
+
+  remote_control:
+    - { name: "/control/command_gate/alive_monitoring" }
+    - { name: "/control/remote_control/alive_monitoring" }
+
+    - { name: "/system/alive_monitoring" }
+    - { name: "/system/emergency_stop_operation" }
+
+    - { name: "/vehicle/alive_monitoring" }
+    - { name: "/vehicle/vehicle_errors" }

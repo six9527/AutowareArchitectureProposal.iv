@@ -1,41 +1,40 @@
-// Copyright 2020 Autoware Foundation
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2020 Autoware Foundation. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 /**
  * @file process_monitor.cpp
  * @brief Process monitor class
  */
 
-#include "system_monitor/process_monitor/process_monitor.hpp"
-
-#include "system_monitor/system_monitor_utility.hpp"
-
-#include <fmt/format.h>
-
-#include <memory>
 #include <regex>
 #include <string>
 #include <vector>
 
-ProcessMonitor::ProcessMonitor(const rclcpp::NodeOptions & options)
-: Node("process_monitor", options),
-  updater_(this),
-  num_of_procs_(declare_parameter<int>("num_of_procs", 5))
+#include <fmt/format.h>
+
+#include <system_monitor/process_monitor/process_monitor.h>
+
+ProcessMonitor::ProcessMonitor(const ros::NodeHandle & nh, const ros::NodeHandle & pnh)
+: nh_(nh), pnh_(pnh)
 {
   int index;
 
   gethostname(hostname_, sizeof(hostname_));
+
+  pnh_.param<int>("num_of_procs", num_of_procs_, 5);
 
   updater_.setHardwareID(hostname_);
   updater_.add("Tasks Summary", this, &ProcessMonitor::monitorProcesses);
@@ -52,13 +51,19 @@ ProcessMonitor::ProcessMonitor(const rclcpp::NodeOptions & options)
   }
 }
 
-void ProcessMonitor::update() { updater_.force_update(); }
+void ProcessMonitor::run(void)
+{
+  ros::Rate rate(1.0);
+
+  while (ros::ok()) {
+    ros::spinOnce();
+    updater_.force_update();
+    rate.sleep();
+  }
+}
 
 void ProcessMonitor::monitorProcesses(diagnostic_updater::DiagnosticStatusWrapper & stat)
 {
-  // Remember start time to measure elapsed time
-  const auto t_start = SystemMonitorUtility::startMeasurement();
-
   bp::ipstream is_err;
   bp::ipstream is_out;
   std::ostringstream os;
@@ -88,9 +93,6 @@ void ProcessMonitor::monitorProcesses(diagnostic_updater::DiagnosticStatusWrappe
 
   // Get high memory processes
   getHighMemoryProcesses(str);
-
-  // Measure elapsed time since start time and report
-  SystemMonitorUtility::stopMeasurement(t_start, stat);
 }
 
 void ProcessMonitor::getTasksSummary(
@@ -251,9 +253,7 @@ void ProcessMonitor::getHighMemoryProcesses(const std::string & output)
 void ProcessMonitor::getTopratedProcesses(
   std::vector<std::shared_ptr<DiagTask>> * tasks, bp::pipe * p)
 {
-  if (tasks == nullptr || p == nullptr) {
-    return;
-  }
+  if (tasks == nullptr || p == nullptr) return;
 
   bp::ipstream is_out;
   bp::ipstream is_err;
@@ -300,15 +300,10 @@ void ProcessMonitor::setErrorContent(
   std::vector<std::shared_ptr<DiagTask>> * tasks, const std::string & message,
   const std::string & error_command, const std::string & content)
 {
-  if (tasks == nullptr) {
-    return;
-  }
+  if (tasks == nullptr) return;
 
   for (auto itr = tasks->begin(); itr != tasks->end(); ++itr) {
     (*itr)->setDiagnosticsStatus(DiagStatus::ERROR, message);
     (*itr)->setErrorContent(error_command, content);
   }
 }
-
-#include <rclcpp_components/register_node_macro.hpp>
-RCLCPP_COMPONENTS_REGISTER_NODE(ProcessMonitor)
