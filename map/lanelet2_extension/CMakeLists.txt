@@ -1,23 +1,10 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.0.2)
 project(lanelet2_extension)
-
-if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 14)
-  set(CMAKE_CXX_STANDARD_REQUIRED ON)
-  set(CMAKE_CXX_EXTENSIONS OFF)
-endif()
-
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic -Werror)
-endif()
-
-find_package(ament_cmake_auto REQUIRED)
-ament_auto_find_build_dependencies()
 
 find_package(PkgConfig)
 find_path(GeographicLib_INCLUDE_DIR GeographicLib/Config.h
   PATH_SUFFIXES GeographicLib
-)
+  )
 set(GeographicLib_INCLUDE_DIRS ${GeographicLib_INCLUDE_DIR})
 
 find_library(GeographicLib_LIBRARIES
@@ -33,58 +20,97 @@ find_path(PUGIXML_INCLUDE_DIRS
   PATH_SUFFIXES pugixml
 )
 
+add_compile_options(-std=c++14)
+
+find_package(catkin REQUIRED COMPONENTS
+  roscpp
+  lanelet2_core
+  lanelet2_io
+  lanelet2_maps
+  lanelet2_projection
+  lanelet2_routing
+  lanelet2_traffic_rules
+  lanelet2_validation
+  autoware_lanelet2_msgs
+  geometry_msgs
+  visualization_msgs
+  roslint
+)
+
+set(ROSLINT_CPP_OPTS "--filter=-build/c++14")
+roslint_cpp()
+
+catkin_package(
+  INCLUDE_DIRS include
+  LIBRARIES lanelet2_extension_lib
+  CATKIN_DEPENDS roscpp lanelet2_core lanelet2_io lanelet2_maps lanelet2_projection lanelet2_routing lanelet2_traffic_rules lanelet2_validation autoware_lanelet2_msgs geometry_msgs visualization_msgs
+)
+
 include_directories(
+  include
   ${GeographicLib_INCLUDE_DIRS}
+  ${catkin_INCLUDE_DIRS}
   ${PUGIXML_INCLUDE_DIRS}
 )
 
 add_definitions(${GeographicLib_DEFINITIONS})
 
-ament_auto_add_library(lanelet2_extension_lib SHARED
+add_library(lanelet2_extension_lib
   lib/autoware_osm_parser.cpp
   lib/autoware_traffic_light.cpp
   lib/detection_area.cpp
-  lib/no_stopping_area.cpp
   lib/message_conversion.cpp
   lib/mgrs_projector.cpp
   lib/query.cpp
   lib/road_marking.cpp
   lib/utilities.cpp
-  lib/virtual_traffic_light.cpp
   lib/visualization.cpp
 )
+
+add_dependencies(lanelet2_extension_lib
+  ${${PROJECT_NAME}_EXPORTED_TARGETS}
+  ${catkin_EXPORTED_TARGETS}
+)
+
 target_link_libraries(lanelet2_extension_lib
+  ${catkin_LIBRARIES}
   ${GeographicLib_LIBRARIES}
 )
 
-ament_auto_add_executable(lanelet2_extension_sample src/sample_code.cpp)
-add_dependencies(lanelet2_extension_sample lanelet2_extension_lib)
+add_executable(lanelet2_extension_sample src/sample_code.cpp)
+add_dependencies(lanelet2_extension_sample ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 target_link_libraries(lanelet2_extension_sample
+  ${catkin_LIBRARIES}
   lanelet2_extension_lib
 )
 
-ament_auto_add_executable(autoware_lanelet2_validation src/validation.cpp)
-add_dependencies(autoware_lanelet2_validation lanelet2_extension_lib)
+add_executable(autoware_lanelet2_validation src/validation.cpp)
+add_dependencies(autoware_lanelet2_validation ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 target_link_libraries(autoware_lanelet2_validation
   ${catkin_LIBRARIES}
   ${PUGIXML_LIBRARIES}
   lanelet2_extension_lib
 )
 
-if(BUILD_TESTING)
-  find_package(ament_cmake_gtest REQUIRED)
-  ament_add_gtest(message_conversion-test test/src/test_message_conversion.cpp)
-  target_link_libraries(message_conversion-test lanelet2_extension_lib)
-  ament_add_gtest(projector-test test/src/test_projector.cpp)
-  target_link_libraries(projector-test lanelet2_extension_lib)
-  ament_add_gtest(query-test test/src/test_query.cpp)
-  target_link_libraries(query-test lanelet2_extension_lib)
-  ament_add_gtest(regulatory_elements-test test/src/test_regulatory_elements.cpp)
-  target_link_libraries(regulatory_elements-test lanelet2_extension_lib)
-  ament_add_gtest(utilities-test test/src/test_utilities.cpp)
-  target_link_libraries(utilities-test lanelet2_extension_lib)
-  find_package(ament_lint_auto REQUIRED)
-  ament_lint_auto_find_test_dependencies()
-endif()
+install(TARGETS lanelet2_extension_lib lanelet2_extension_sample autoware_lanelet2_validation
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
 
-ament_auto_package()
+install(DIRECTORY include/${PROJECT_NAME}/
+  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION})
+
+if(CATKIN_ENABLE_TESTING)
+  roslint_add_test()
+  find_package(rostest REQUIRED)
+  add_rostest_gtest(message_conversion-test test/test_message_conversion.test test/src/test_message_conversion.cpp)
+  target_link_libraries(message_conversion-test ${catkin_LIBRARIES} lanelet2_extension_lib)
+  add_rostest_gtest(projector-test test/test_projector.test test/src/test_projector.cpp)
+  target_link_libraries(projector-test ${catkin_LIBRARIES} lanelet2_extension_lib)
+  add_rostest_gtest(query-test test/test_query.test test/src/test_query.cpp)
+  target_link_libraries(query-test ${catkin_LIBRARIES} lanelet2_extension_lib)
+  add_rostest_gtest(regulatory_elements-test test/test_regulatory_elements.test test/src/test_regulatory_elements.cpp)
+  target_link_libraries(regulatory_elements-test ${catkin_LIBRARIES} lanelet2_extension_lib)
+  add_rostest_gtest(utilities-test test/test_utilities.test test/src/test_utilities.cpp)
+  target_link_libraries(utilities-test ${catkin_LIBRARIES} lanelet2_extension_lib)
+endif()

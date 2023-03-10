@@ -1,34 +1,34 @@
-// Copyright 2015-2019 Autoware Foundation. All rights reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-//
-// Authors: Simon Thompson, Ryohsuke Mitsudome
+/*
+ * Copyright 2015-2019 Autoware Foundation. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * Authors: Simon Thompson, Ryohsuke Mitsudome
+ */
 
-#ifndef LANELET2_EXTENSION__UTILITY__QUERY_HPP_
-#define LANELET2_EXTENSION__UTILITY__QUERY_HPP_
-
-#include "lanelet2_extension/regulatory_elements/autoware_traffic_light.hpp"
-#include "lanelet2_extension/regulatory_elements/detection_area.hpp"
-#include "lanelet2_extension/regulatory_elements/no_stopping_area.hpp"
-
-#include <geometry_msgs/msg/point.hpp>
-#include <geometry_msgs/msg/pose.hpp>
+#ifndef LANELET2_EXTENSION_UTILITY_QUERY_H
+#define LANELET2_EXTENSION_UTILITY_QUERY_H
 
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_core/primitives/Lanelet.h>
 #include <lanelet2_routing/RoutingGraph.h>
 
-#include <memory>
+#include <geometry_msgs/Point.h>
+#include <geometry_msgs/PolygonStamped.h>
+#include <geometry_msgs/Pose.h>
+#include <lanelet2_extension/regulatory_elements/autoware_traffic_light.h>
+#include <lanelet2_extension/regulatory_elements/detection_area.h>
+
 #include <string>
 #include <vector>
 
@@ -38,7 +38,6 @@ using TrafficSignConstPtr = std::shared_ptr<const lanelet::TrafficSign>;
 using TrafficLightConstPtr = std::shared_ptr<const lanelet::TrafficLight>;
 using AutowareTrafficLightConstPtr = std::shared_ptr<const lanelet::autoware::AutowareTrafficLight>;
 using DetectionAreaConstPtr = std::shared_ptr<const lanelet::autoware::DetectionArea>;
-using NoStoppingAreaConstPtr = std::shared_ptr<const lanelet::autoware::NoStoppingArea>;
 }  // namespace lanelet
 
 namespace lanelet
@@ -79,15 +78,9 @@ lanelet::ConstLanelets walkwayLanelets(const lanelet::ConstLanelets lls);
 lanelet::ConstLanelets roadLanelets(const lanelet::ConstLanelets lls);
 
 /**
- * [shoulderLanelets extracts shoulder lanelets]
- * @param  lls [input lanelets with subtype shoulder]
- * @return     [shoulder lanelets]
- */
-lanelet::ConstLanelets shoulderLanelets(const lanelet::ConstLanelets lls);
-/**
  * [trafficLights extracts Traffic Light regulatory element from lanelets]
  * @param lanelets [input lanelets]
- * @return         [traffic light that are associated with input lanelets]
+ * @return         [traffic light that are associated with input lanenets]
  */
 std::vector<lanelet::TrafficLightConstPtr> trafficLights(const lanelet::ConstLanelets lanelets);
 
@@ -96,7 +89,7 @@ std::vector<lanelet::TrafficLightConstPtr> trafficLights(const lanelet::ConstLan
  * from lanelets]
  * @param lanelets [input lanelets]
  * @return         [autoware traffic light that are associated with input
- * lanelets]
+ * lanenets]
  */
 std::vector<lanelet::AutowareTrafficLightConstPtr> autowareTrafficLights(
   const lanelet::ConstLanelets lanelets);
@@ -107,14 +100,6 @@ std::vector<lanelet::AutowareTrafficLightConstPtr> autowareTrafficLights(
  * @return         [detection areas that are associated with input lanelets]
  */
 std::vector<lanelet::DetectionAreaConstPtr> detectionAreas(const lanelet::ConstLanelets & lanelets);
-
-/**
- * [noStoppingArea extracts NoStopping Area regulatory elements from lanelets]
- * @param lanelets [input lanelets]
- * @return         [no stopping areas that are associated with input lanelets]
- */
-std::vector<lanelet::NoStoppingAreaConstPtr> noStoppingAreas(
-  const lanelet::ConstLanelets & lanelets);
 
 // query all obstacle polygons in lanelet2 map
 lanelet::ConstPolygons3d getAllObstaclePolygons(
@@ -185,7 +170,7 @@ std::vector<lanelet::ConstLineString3d> stopLinesLanelets(const lanelet::ConstLa
 std::vector<lanelet::ConstLineString3d> stopLinesLanelet(const lanelet::ConstLanelet ll);
 
 /**
- * [stopSignStopLines extracts stoplines that are associated with stop signs]
+ * [stopSignes extracts stoplines that are associated with stopsignes]
  * @param lanelets     [input lanelets]
  * @param stop_sign_id [sign id of stop sign]
  * @return             [array of stoplines]
@@ -197,14 +182,14 @@ ConstLanelets getLaneletsWithinRange(
   const lanelet::ConstLanelets & lanelets, const lanelet::BasicPoint2d & search_point,
   const double range);
 ConstLanelets getLaneletsWithinRange(
-  const lanelet::ConstLanelets & lanelets, const geometry_msgs::msg::Point & search_point,
+  const lanelet::ConstLanelets & lanelets, const geometry_msgs::Point & search_point,
   const double range);
 
 ConstLanelets getLaneChangeableNeighbors(
   const routing::RoutingGraphPtr & graph, const ConstLanelet & lanelet);
 ConstLanelets getLaneChangeableNeighbors(
   const routing::RoutingGraphPtr & graph, const ConstLanelets & road_lanelets,
-  const geometry_msgs::msg::Point & search_point);
+  const geometry_msgs::Point & search_point);
 
 ConstLanelets getAllNeighbors(const routing::RoutingGraphPtr & graph, const ConstLanelet & lanelet);
 ConstLanelets getAllNeighborsLeft(
@@ -213,10 +198,10 @@ ConstLanelets getAllNeighborsRight(
   const routing::RoutingGraphPtr & graph, const ConstLanelet & lanelet);
 ConstLanelets getAllNeighbors(
   const routing::RoutingGraphPtr & graph, const ConstLanelets & road_lanelets,
-  const geometry_msgs::msg::Point & search_point);
+  const geometry_msgs::Point & search_point);
 
 bool getClosestLanelet(
-  const ConstLanelets & lanelets, const geometry_msgs::msg::Pose & search_pose,
+  const ConstLanelets & lanelets, const geometry_msgs::Pose & search_pose,
   ConstLanelet * closest_lanelet_ptr);
 
 /**
@@ -243,10 +228,10 @@ std::vector<lanelet::ConstLanelets> getSucceedingLaneletSequences(
  */
 std::vector<lanelet::ConstLanelets> getPrecedingLaneletSequences(
   const routing::RoutingGraphPtr & graph, const lanelet::ConstLanelet & lanelet,
-  const double length, const lanelet::ConstLanelets & exclude_lanelets = {});
+  const double length);
 
 }  // namespace query
 }  // namespace utils
 }  // namespace lanelet
 
-#endif  // LANELET2_EXTENSION__UTILITY__QUERY_HPP_
+#endif  // LANELET2_EXTENSION_UTILITY_QUERY_H

@@ -30,48 +30,51 @@
  * limitations under the License.
  */
 
+#include <boost/filesystem.hpp>
+
+#include <ros/ros.h>
+
 #include <map_loader/pointcloud_map_loader_node.h>
 
-#include <pcl/io/pcd_io.h>
-#include <pcl_conversions/pcl_conversions.h>
+namespace fs = boost::filesystem;
 
-PointCloudMapLoaderNode::PointCloudMapLoaderNode(const std::vector<std::string> & pcd_paths)
+int main(int argc, char * argv[])
 {
-  pub_pointcloud_map_ =
-    private_nh_.advertise<sensor_msgs::PointCloud2>("output/pointcloud_map", 1, true);
+  ros::init(argc, argv, "pointcloud_map_loader");
 
-  const auto pcd = loadPCDFiles(pcd_paths);
+  std::vector<std::string> pcd_paths;
+  for (int i = 1; i < argc; ++i) {
+    const fs::path arg(argv[i]);
 
-  if (pcd.width == 0) {
-    ROS_ERROR("No PCD was loaded: pcd_paths.size() = %zu", pcd_paths.size());
-    return;
-  }
-
-  pub_pointcloud_map_.publish(pcd);
-}
-
-sensor_msgs::PointCloud2 PointCloudMapLoaderNode::loadPCDFiles(
-  const std::vector<std::string> & pcd_paths)
-{
-  sensor_msgs::PointCloud2 whole_pcd{};
-
-  sensor_msgs::PointCloud2 partial_pcd;
-  for (const auto & path : pcd_paths) {
-    if (pcl::io::loadPCDFile(path, partial_pcd) == -1) {
-      ROS_ERROR_STREAM("PCD load failed: " << path);
+    if (!fs::exists(arg)) {
+      const std::string msg = "invalid path: " + arg.string();
+      throw std::runtime_error(msg);
     }
 
-    if (whole_pcd.width == 0) {
-      whole_pcd = partial_pcd;
-    } else {
-      whole_pcd.width += partial_pcd.width;
-      whole_pcd.row_step += partial_pcd.row_step;
-      whole_pcd.data.reserve(whole_pcd.data.size() + partial_pcd.data.size());
-      whole_pcd.data.insert(whole_pcd.data.end(), partial_pcd.data.begin(), partial_pcd.data.end());
+    if (fs::is_regular_file(arg)) {
+      pcd_paths.push_back(argv[i]);
+    }
+
+    if (fs::is_directory(arg)) {
+      for (const auto & f : fs::directory_iterator(arg)) {
+        const auto & p = f.path();
+
+        if (!fs::is_regular_file(p)) {
+          continue;
+        }
+
+        if (p.extension() != ".pcd" && p.extension() != ".PCD") {
+          continue;
+        }
+
+        pcd_paths.push_back(p.string());
+      }
     }
   }
 
-  whole_pcd.header.frame_id = "map";
+  PointCloudMapLoaderNode pointcloud_map_loader_node(pcd_paths);
 
-  return whole_pcd;
+  ros::spin();
+
+  return 0;
 }

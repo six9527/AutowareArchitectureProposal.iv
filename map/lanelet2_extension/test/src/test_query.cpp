@@ -1,21 +1,23 @@
-// Copyright 2015-2019 Autoware Foundation
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-#include "lanelet2_extension/utility/query.hpp"
+/*
+ * Copyright 2015-2019 Autoware Foundation. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #include <gtest/gtest.h>
+#include <lanelet2_extension/utility/query.h>
 #include <math.h>
+#include <ros/ros.h>
 
 using lanelet::Lanelet;
 using lanelet::LineString3d;
@@ -87,18 +89,18 @@ private:
 TEST_F(TestSuite, QueryLanelets)
 {
   lanelet::ConstLanelets all_lanelets = lanelet::utils::query::laneletLayer(sample_map_ptr);
-  ASSERT_EQ(2U, all_lanelets.size()) << "failed to retrieve all lanelets";
+  ASSERT_EQ(2, all_lanelets.size()) << "failed to retrieve all lanelets";
 
   lanelet::ConstLanelets subtype_lanelets =
     lanelet::utils::query::subtypeLanelets(all_lanelets, lanelet::AttributeValueString::Road);
-  ASSERT_EQ(1U, subtype_lanelets.size()) << "failed to retrieve road lanelet by subtypeLanelets";
+  ASSERT_EQ(1, subtype_lanelets.size()) << "failed to retrieve road lanelet by subtypeLanelets";
 
   lanelet::ConstLanelets road_lanelets = lanelet::utils::query::roadLanelets(all_lanelets);
-  ASSERT_EQ(1U, road_lanelets.size()) << "failed to retrieve road lanelets";
+  ASSERT_EQ(1, road_lanelets.size()) << "failed to retrieve road lanelets";
 
   lanelet::ConstLanelets crosswalk_lanelets =
     lanelet::utils::query::crosswalkLanelets(all_lanelets);
-  ASSERT_EQ(1U, crosswalk_lanelets.size()) << "failed to retrieve crosswalk lanelets";
+  ASSERT_EQ(1, crosswalk_lanelets.size()) << "failed to retrieve crosswalk lanelets";
 }
 
 TEST_F(TestSuite, QueryTrafficLights)
@@ -106,10 +108,10 @@ TEST_F(TestSuite, QueryTrafficLights)
   lanelet::ConstLanelets all_lanelets = lanelet::utils::query::laneletLayer(sample_map_ptr);
 
   auto traffic_lights = lanelet::utils::query::trafficLights(all_lanelets);
-  ASSERT_EQ(1U, traffic_lights.size()) << "failed to retrieve traffic lights";
+  ASSERT_EQ(1, traffic_lights.size()) << "failed to retrieve traffic lights";
 
   auto autoware_traffic_lights = lanelet::utils::query::autowareTrafficLights(all_lanelets);
-  ASSERT_EQ(1U, autoware_traffic_lights.size()) << "failed to retrieve autoware traffic lights";
+  ASSERT_EQ(1, autoware_traffic_lights.size()) << "failed to retrieve autoware traffic lights";
 }
 
 TEST_F(TestSuite, QueryStopLine)
@@ -118,14 +120,15 @@ TEST_F(TestSuite, QueryStopLine)
   lanelet::ConstLanelets road_lanelets = lanelet::utils::query::roadLanelets(all_lanelets);
 
   auto stop_lines = lanelet::utils::query::stopLinesLanelets(all_lanelets);
-  ASSERT_EQ(1U, stop_lines.size()) << "failed to retrieve stop lines from all lanelets";
+  ASSERT_EQ(1, stop_lines.size()) << "failed to retrieve stop lines from all lanelets";
 
   auto stop_lines2 = lanelet::utils::query::stopLinesLanelet(road_lanelets.front());
-  ASSERT_EQ(1U, stop_lines2.size()) << "failed to retrieve stop lines from a lanelet";
+  ASSERT_EQ(1, stop_lines2.size()) << "failed to retrieve stop lines from a lanelet";
 }
 
 int main(int argc, char ** argv)
 {
   testing::InitGoogleTest(&argc, argv);
+  ros::init(argc, argv, "TestNode");
   return RUN_ALL_TESTS();
 }

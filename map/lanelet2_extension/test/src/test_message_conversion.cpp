@@ -1,21 +1,25 @@
-// Copyright 2015-2019 Autoware Foundation
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-#include "lanelet2_extension/utility/message_conversion.hpp"
-#include "lanelet2_extension/utility/query.hpp"
+/*
+ * Copyright 2015-2019 Autoware Foundation. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+#include <math.h>
+#include <ros/ros.h>
 
 #include <gtest/gtest.h>
-#include <math.h>
+
+#include <lanelet2_extension/utility/message_conversion.h>
+#include <lanelet2_extension/utility/query.h>
 
 using lanelet::Lanelet;
 using lanelet::LineString3d;
@@ -52,12 +56,12 @@ private:
 
 TEST_F(TestSuite, BinMsgConversion)
 {
-  autoware_auto_mapping_msgs::msg::HADMapBin bin_msg;
+  autoware_lanelet2_msgs::MapBin bin_msg;
   lanelet::LaneletMapPtr regenerated_map(new lanelet::LaneletMap);
 
   lanelet::utils::conversion::toBinMsg(single_lanelet_map_ptr, &bin_msg);
 
-  ASSERT_NE(0U, bin_msg.data.size()) << "converted bin message does not have any data";
+  ASSERT_NE(0, bin_msg.data.size()) << "converted bin message does not have any data";
 
   lanelet::utils::conversion::fromBinMsg(bin_msg, regenerated_map);
 
@@ -72,27 +76,27 @@ TEST_F(TestSuite, ToGeomMsgPt)
 {
   Point3d lanelet_pt(getId(), -0.1, 0.2, 3.0);
 
-  geometry_msgs::msg::Point32 geom_pt32;
+  geometry_msgs::Point32 geom_pt32;
   geom_pt32.x = -0.1;
   geom_pt32.y = 0.2;
   geom_pt32.z = 3.0;
 
-  geometry_msgs::msg::Point geom_pt;
+  geometry_msgs::Point geom_pt;
   toGeomMsgPt(geom_pt32, &geom_pt);
   ASSERT_FLOAT_EQ(geom_pt32.x, geom_pt.x)
-    << " converted value is different from original geometry_msgs::msg::Point";
+    << " converted value is different from original geometry_msgs::Point";
   ASSERT_FLOAT_EQ(geom_pt32.y, geom_pt.y)
-    << " converted value is different from original geometry_msgs::msg::Point";
+    << " converted value is different from original geometry_msgs::Point";
   ASSERT_FLOAT_EQ(geom_pt32.z, geom_pt.z)
-    << " converted value is different from original geometry_msgs::msg::Point";
+    << " converted value is different from original geometry_msgs::Point";
 
   geom_pt = toGeomMsgPt(geom_pt32);
   ASSERT_FLOAT_EQ(geom_pt32.x, geom_pt.x)
-    << " converted value is different from original geometry_msgs::msg::Point";
+    << " converted value is different from original geometry_msgs::Point";
   ASSERT_FLOAT_EQ(geom_pt32.y, geom_pt.y)
-    << " converted value is different from original geometry_msgs::msg::Point";
+    << " converted value is different from original geometry_msgs::Point";
   ASSERT_FLOAT_EQ(geom_pt32.z, geom_pt.z)
-    << " converted value is different from original geometry_msgs::msg::Point";
+    << " converted value is different from original geometry_msgs::Point";
 
   toGeomMsgPt(lanelet_pt.basicPoint(), &geom_pt);
   ASSERT_DOUBLE_EQ(lanelet_pt.basicPoint().x(), geom_pt.x)
@@ -154,5 +158,6 @@ TEST_F(TestSuite, ToGeomMsgPt)
 int main(int argc, char ** argv)
 {
   testing::InitGoogleTest(&argc, argv);
+  ros::init(argc, argv, "TestNode");
   return RUN_ALL_TESTS();
 }

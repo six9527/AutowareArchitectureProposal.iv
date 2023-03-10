@@ -1,27 +1,28 @@
-// Copyright 2015-2019 Autoware Foundation. All rights reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-//
-// Authors: Ryohsuke Mitsudome
+/*
+ * Copyright 2015-2019 Autoware Foundation. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * Authors: Ryohsuke Mitsudome
+ */
 
-#include "lanelet2_extension/io/autoware_osm_parser.hpp"
+#include <lanelet2_extension/io/autoware_osm_parser.h>
 
 #include <lanelet2_core/geometry/LineString.h>
 #include <lanelet2_io/io_handlers/Factory.h>
 #include <lanelet2_io/io_handlers/OsmFile.h>
 #include <lanelet2_io/io_handlers/OsmHandler.h>
 
-#include <memory>
 #include <string>
 
 namespace lanelet
@@ -76,12 +77,9 @@ void AutowareOsmParser::parseVersions(
 
   auto osmNode = doc.child("osm");
   auto metainfo = osmNode.child("MetaInfo");
-  if (metainfo.attribute("format_version")) {
+  if (metainfo.attribute("format_version"))
     *format_version = metainfo.attribute("format_version").value();
-  }
-  if (metainfo.attribute("map_version")) {
-    *map_version = metainfo.attribute("map_version").value();
-  }
+  if (metainfo.attribute("map_version")) *map_version = metainfo.attribute("map_version").value();
 }
 
 }  // namespace io_handlers

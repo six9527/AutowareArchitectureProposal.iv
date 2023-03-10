@@ -1,59 +1,69 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.0.2)
 project(map_loader)
 
-if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 17)
-  set(CMAKE_CXX_STANDARD_REQUIRED ON)
-  set(CMAKE_CXX_EXTENSIONS OFF)
-endif()
+add_compile_options(-std=c++14)
 
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic -Werror)
-endif()
-
-find_package(PCL REQUIRED COMPONENTS io)
-
-find_package(ament_cmake_auto REQUIRED)
-ament_auto_find_build_dependencies()
-
-ament_auto_add_library(pointcloud_map_loader_node SHARED
-  src/pointcloud_map_loader/pointcloud_map_loader_node.cpp
-)
-target_link_libraries(pointcloud_map_loader_node ${PCL_LIBRARIES})
-
-rclcpp_components_register_node(pointcloud_map_loader_node
-  PLUGIN "PointCloudMapLoaderNode"
-  EXECUTABLE pointcloud_map_loader
+find_package(catkin REQUIRED COMPONENTS
+  geometry_msgs
+  lanelet2_extension
+  pcl_ros
+  roscpp
+  std_msgs
+  tf2_geometry_msgs
+  tf2_ros
+  visualization_msgs
 )
 
-ament_auto_add_library(lanelet2_map_loader_node SHARED
-  src/lanelet2_map_loader/lanelet2_map_loader_node.cpp
+find_package(Boost REQUIRED COMPONENTS filesystem)
+
+catkin_package(
+  INCLUDE_DIRS include
+  CATKIN_DEPENDS
+    geometry_msgs
+    std_msgs
+    tf2_geometry_msgs
+    visualization_msgs
+  DEPENDS
+    Boost
 )
 
-rclcpp_components_register_node(lanelet2_map_loader_node
-  PLUGIN "Lanelet2MapLoaderNode"
-  EXECUTABLE lanelet2_map_loader
+include_directories(
+  include
+  ${Boost_INCLUDE_DIRS}
+  ${catkin_INCLUDE_DIRS}
 )
 
-ament_auto_add_library(lanelet2_map_visualization_node SHARED
-  src/lanelet2_map_loader/lanelet2_map_visualization_node.cpp
+add_executable(pointcloud_map_loader src/pointcloud_map_loader/main.cpp src/pointcloud_map_loader/pointcloud_map_loader_node.cpp)
+target_link_libraries(pointcloud_map_loader ${Boost_LIBRARIES} ${catkin_LIBRARIES})
+add_dependencies(pointcloud_map_loader ${catkin_EXPORTED_TARGETS})
+
+add_executable(lanelet2_map_loader src/lanelet2_map_loader/lanelet2_map_loader.cpp)
+target_link_libraries(lanelet2_map_loader ${catkin_LIBRARIES})
+add_dependencies(lanelet2_map_loader ${catkin_EXPORTED_TARGETS})
+
+add_executable(lanelet2_map_visualization src/lanelet2_map_loader/lanelet2_map_visualization.cpp)
+target_link_libraries(lanelet2_map_visualization ${catkin_LIBRARIES})
+add_dependencies(lanelet2_map_visualization ${catkin_EXPORTED_TARGETS})
+
+## Install executables and/or libraries
+install(
+  TARGETS
+    pointcloud_map_loader
+    lanelet2_map_loader
+    lanelet2_map_visualization
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
-rclcpp_components_register_node(lanelet2_map_visualization_node
-  PLUGIN "Lanelet2MapVisualizationNode"
-  EXECUTABLE lanelet2_map_visualization
+## Install project namespaced headers
+install(DIRECTORY include/${PROJECT_NAME}/
+  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
 )
 
-install(PROGRAMS
-  script/map_hash_generator
-  DESTINATION lib/${PROJECT_NAME}
-)
-
-if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  ament_lint_auto_find_test_dependencies()
-endif()
-
-ament_auto_package(INSTALL_TO_SHARE
-  launch
+## Install files
+install(
+  DIRECTORY
+    launch
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )

@@ -1,21 +1,23 @@
-// Copyright 2015-2019 Autoware Foundation
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2015-2019 Autoware Foundation. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
-#include "lanelet2_extension/projection/mgrs_projector.hpp"
-#include "lanelet2_extension/regulatory_elements/autoware_traffic_light.hpp"
+#include <ros/ros.h>
 
-#include <rclcpp/rclcpp.hpp>
+#include <lanelet2_extension/projection/mgrs_projector.h>
+#include <lanelet2_extension/regulatory_elements/autoware_traffic_light.h>
 
 #include <lanelet2_core/primitives/Lanelet.h>
 #include <lanelet2_io/Io.h>
@@ -110,9 +112,13 @@ void usingAutowareTrafficLight(const std::string map_file_path)
 
 int main(int argc, char * argv[])
 {
-  rclcpp::init(argc, argv);
-  auto node = rclcpp::Node::make_shared("sample_code");
-  const std::string map_file_path = node->declare_parameter("map_file", "");
+  ros::init(argc, argv, "lanelet2_extension_example");
+  ros::NodeHandle nh;
+  ros::NodeHandle pnh("~");
+
+  std::string map_file_path;
+  pnh.param("map_file", map_file_path, map_file_path);
+
   loadingAutowareOSMFile(map_file_path);
   usingMGRSProjector();
   usingAutowareTrafficLight(map_file_path);

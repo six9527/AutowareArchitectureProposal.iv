@@ -1,28 +1,27 @@
-// Copyright 2015-2019 Autoware Foundation. All rights reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-//
-// Authors: Ryohsuke Mitsudome
-
-#include "lanelet2_extension/regulatory_elements/autoware_traffic_light.hpp"
+/*
+ * Copyright 2015-2019 Autoware Foundation. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * Authors: Ryohsuke Mitsudome
+ */
 
 #include <boost/variant.hpp>
 
 #include <lanelet2_core/primitives/RegulatoryElement.h>
+#include <lanelet2_extension/regulatory_elements/autoware_traffic_light.h>
 
 #include <algorithm>
-#include <memory>
-#include <utility>
 #include <vector>
 
 namespace lanelet
@@ -80,8 +79,7 @@ LineStringsOrPolygons3d getLsOrPoly(const RuleParameterMap & paramsMap, RoleName
   return result;
 }
 
-[[maybe_unused]] ConstLineStringsOrPolygons3d getConstLsOrPoly(
-  const RuleParameterMap & params, RoleName role)
+ConstLineStringsOrPolygons3d getConstLsOrPoly(const RuleParameterMap & params, RoleName role)
 {
   auto cast_func = [](auto & lsOrPoly) {
     return static_cast<ConstLineStringOrPolygon3d>(lsOrPoly);
@@ -89,7 +87,7 @@ LineStringsOrPolygons3d getLsOrPoly(const RuleParameterMap & paramsMap, RoleName
   return utils::transform(getLsOrPoly(params, role), cast_func);
 }
 
-[[maybe_unused]] RegulatoryElementDataPtr constructAutowareTrafficLightData(
+RegulatoryElementDataPtr constructAutowareTrafficLightData(
   Id id, const AttributeMap & attributes, const LineStringsOrPolygons3d & trafficLights,
   const Optional<LineString3d> & stopLine, const LineStrings3d & lightBulbs)
 {
